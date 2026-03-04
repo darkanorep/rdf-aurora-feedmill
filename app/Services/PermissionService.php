@@ -13,7 +13,6 @@ class PermissionService
         return Permission::useFilters()->dynamicPaginate();
     }
 
-
     public function createPermission(array $data)
     {
         return Permission::create($data);
