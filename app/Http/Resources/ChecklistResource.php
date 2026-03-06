@@ -5,7 +5,7 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class SectionResource extends JsonResource
+class ChecklistResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -17,7 +17,7 @@ class SectionResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'checklists' => ChecklistResource::collection($this->whenLoaded('checklists')),
+            'section' => new SectionResource($this->whenLoaded('section')),
         ];
     }
 }

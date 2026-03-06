@@ -9,7 +9,7 @@ use Essa\APIToolKit\Api\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 
-class SectionsController extends Controller
+class SectionController extends Controller
 {
     use ApiResponse;
 

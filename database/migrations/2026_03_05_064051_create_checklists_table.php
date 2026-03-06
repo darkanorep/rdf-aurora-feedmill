@@ -13,7 +13,10 @@ return new class extends Migration
     {
         Schema::create('checklists', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('section_id')->nullable()->references('id')->on('sections');
+            $table->string('name')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 

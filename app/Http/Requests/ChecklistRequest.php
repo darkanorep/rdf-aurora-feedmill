@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class RoleRequest extends FormRequest
+class ChecklistRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -22,15 +22,15 @@ class RoleRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => 'required|string|max:255|unique:roles,name,' . $this->route('role'),
-            'permission_id' => 'array|required|exists:permissions,id',
+            'name' => 'required|string|max:255',
+            'section_id' => 'required|exists:sections,id',
         ];
     }
 
     public function attributes()
     {
         return [
-            'permission_id' => 'permissions',
+            'section_id' => 'section',
         ];
     }
 }
