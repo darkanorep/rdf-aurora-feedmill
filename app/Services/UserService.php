@@ -14,7 +14,7 @@ class UserService
 
     public function createUser(array $data)
     {
-        $data['password'] = Hash::make($data['password']);
+        $data['password'] = Hash::make($data['username']);
         return User::create($data);
     }
 
