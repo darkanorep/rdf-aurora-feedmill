@@ -29,4 +29,31 @@ class FormController extends Controller
 
         return $this->responseCreated("Form created successfully.");
     }
+
+    public function getFormByChecklistId(Request $request) {
+        $forms = $this->formService->getFormByChecklistId($request->checklist_id);
+
+        if ($forms['forms']->isEmpty()) {
+            return $this->responseNotFound("No forms found for the given checklist ID.");
+        }
+
+        return $this->responseSuccess("Forms retrieved successfully.", $forms);
+    }
+
+    public function updateByChecklistId(FormmRequest $request) {
+        
+        $data = $request->validated();
+        $this->formService->updateByChecklistId($data, $request->checklist_id);
+
+        return $this->responseSuccess("Forms updated successfully.");
+    }
+
+    public function deleteByChecklistId(Request $request) {
+        
+        $this->formService->deleteByChecklistId($request->checklist_id);
+
+        return $this->responseSuccess("Form deleted successfully.");
+    }
+    
+
 }

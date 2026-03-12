@@ -21,7 +21,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::resource('permissions', PermissionController::class);
     Route::resource('roles', RoleController::class);
     Route::resource('users', UserController::class);
-    Route::resource('forms', FormController::class);
+
+    Route::prefix('forms')->group(function () {
+        Route::get('by-checklist', [FormController::class, 'getFormByChecklistId']);
+        Route::put('by-checklist', [FormController::class, 'updateByChecklistId']);
+        Route::delete('by-checklist', [FormController::class, 'deleteByChecklistId']);
+        Route::resource('/', FormController::class)->only(['index', 'store']);
+    });
 
     Route::post('logout', [AuthController::class, 'logout']);
 });
