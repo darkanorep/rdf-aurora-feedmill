@@ -8,7 +8,7 @@ use Essa\APIToolKit\Filters\QueryFilters;
 
 class InspectionAreaFilter extends QueryFilters
 {
-    protected array $allowedFilters = [];
+    protected array $allowedFilters = ['name'];
 
-    protected array $columnSearch = [];
+    protected array $columnSearch = ['name'];
 }
