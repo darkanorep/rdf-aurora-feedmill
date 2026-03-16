@@ -16,6 +16,9 @@ class Role extends Model
 
     protected $guarded = [];
 
+    public const SUPER_ADMIN = 'Super Admin';
+    public const ADMIN = 'Admin';
+
     protected $casts = [
         'permission_id' => 'json',
     ];

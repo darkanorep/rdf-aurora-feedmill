@@ -8,9 +8,9 @@ use Essa\APIToolKit\Filters\QueryFilters;
 
 class ChecklistFilter extends QueryFilters
 {
-    protected array $allowedFilters = [];
+    protected array $allowedFilters = ['name'];
 
-    protected array $columnSearch = [];
+    protected array $columnSearch = ['name'];
 
     public function status($status)
     {

@@ -17,10 +17,12 @@ class FormController extends Controller
         $this->formService = $formService;
     }
 
-    public function index() {
-        $forms = $this->formService->getForms();
+    public function index(Request $request) {
+         $forms = $this->formService->getForms($request);
 
-        return $this->responseSuccess("Forms retrieved successfully.", $forms);
+        return $forms->isEmpty()
+            ? $this->responseNotFound('No Forms found.')
+            : $this->responseSuccess("Forms retrieved successfully.", $forms);
     }
 
     public function store(FormmRequest $request) {
