@@ -3,8 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ChecklistRequest;
-use App\Http\Requests\StoreChecklistRequest;
-use App\Http\Requests\UpdateChecklistRequest;
 use App\Http\Resources\ChecklistResource;
 use App\Models\Checklist;
 use App\Services\ChecklistService;

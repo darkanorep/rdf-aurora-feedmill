@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\InspectionAreaPestRequest;
 use App\Http\Resources\InspectionAreaPestResource;
-use App\Models\InspectionAreaPest;
 use App\Services\InspectionAreaPestService;
 use Essa\APIToolKit\Api\ApiResponse;
 use Illuminate\Http\Request;
@@ -15,7 +14,6 @@ class InspectionAreaPestController extends Controller
     use ApiResponse;
 
     protected $inspectionAreaPestService;
-
     public function __construct(InspectionAreaPestService $inspectionAreaPestService)
     {
         $this->inspectionAreaPestService = $inspectionAreaPestService;
@@ -28,7 +26,7 @@ class InspectionAreaPestController extends Controller
             ? $sheets->setCollection($sheets->getCollection()->transform(function ($item) {
             return new InspectionAreaPestResource($item);
         }))
-            : $sheets = inspectionAreaPestService::collection($sheets);
+            : $sheets = InspectionAreaPestResource::collection($sheets);
 
         return $sheets->isEmpty()
             ? $this->responseNotFound('No Sheets found.')
