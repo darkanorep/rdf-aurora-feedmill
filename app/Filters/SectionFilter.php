@@ -14,12 +14,10 @@ class SectionFilter extends QueryFilters
 
     public function status($status)
     {
-        return $this->builder->withTrashed()->when(!$status, function ($query) {
-            $query->whereNotNull('deleted_at');
-        }, function ($query) use ($status) {
-            $query->when($status, function ($query){
-                $query->whereNull('deleted_at');
-            });
-        });
+        return $this->builder->withTrashed()->when(
+            $status === 'inactive',
+            fn ($query) => $query->whereNotNull('deleted_at'),
+            fn ($query) => $query->whereNull('deleted_at')
+        );
     }
 }
