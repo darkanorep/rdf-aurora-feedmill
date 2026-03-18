@@ -15,6 +15,7 @@ class InspectionAreaPestResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
+            'id' => $this->id,
             'inspection_areas' => $this->inspectionAreas->map (fn ($item) => InspectionAreaResource::make($item)),
             'pests' => $this->pests->map (fn ($item) => PestResource::make($item))
         ];
