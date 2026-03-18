@@ -10,4 +10,13 @@ class InfestationLevelFilter extends QueryFilters
 {
     protected array $allowedFilters = ['name'];
     protected array $columnSearch = ['name'];
+
+    public function status($status)
+    {
+        return $this->builder->withTrashed()->when(
+            $status === 'inactive',
+            fn ($query) => $query->whereNotNull('deleted_at'),
+            fn ($query) => $query->whereNull('deleted_at')
+        );
+    }
 }
