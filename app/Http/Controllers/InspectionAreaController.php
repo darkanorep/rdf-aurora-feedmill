@@ -18,7 +18,6 @@ class InspectionAreaController extends Controller
     public function __construct(InspectionAreaService $inspectionAreaService)
     {
         $this->inspectionAreaService = $inspectionAreaService;
-
     }
 
     public function index(Request $request) {
@@ -27,7 +26,7 @@ class InspectionAreaController extends Controller
         $inspectionAreas instanceof LengthAwarePaginator
             ? $inspectionAreas->setCollection($inspectionAreas->getCollection()->transform(function ($item) {
                     return new InspectionAreaResource($item);
-                })) 
+                }))
             : $inspectionAreas = InspectionAreaResource::collection($inspectionAreas);
 
         return $inspectionAreas->isEmpty()
@@ -45,11 +44,11 @@ class InspectionAreaController extends Controller
     public function show($id) {
         $inspectionArea = $this->inspectionAreaService->getInspectionAreasById($id);
 
-        return $inspectionArea 
-            ? $this->responseSuccess('Inspection Area fetched successfully.', new InspectionAreaResource($inspectionArea)) 
+        return $inspectionArea
+            ? $this->responseSuccess('Inspection Area fetched successfully.', new InspectionAreaResource($inspectionArea))
             : $this->responseNotFound('Inspection Area not found.');
     }
-    
+
     public function update(InspectionAreaRequest $request, $id) {
         $inspectionArea = $this->inspectionAreaService->getInspectionAreasById($id);
 
@@ -65,7 +64,7 @@ class InspectionAreaController extends Controller
 
     public function destroy($id) {
         $inspectionArea = $this->inspectionAreaService->deleteInspectionArea($id);
-    
+
         return $inspectionArea
             ? $this->responseSuccess('Status successfully changed.')
             : $this->responseNotFound('Inspection Area not found.');

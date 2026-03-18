@@ -27,7 +27,7 @@ class ChecklistController extends Controller
         $checklists instanceof LengthAwarePaginator
             ? $checklists->setCollection($checklists->getCollection()->transform(function ($item) {
                     return new ChecklistResource($item);
-                })) 
+                }))
             : $checklists = ChecklistResource::collection($checklists);
 
         return $checklists->isEmpty()
@@ -45,11 +45,11 @@ class ChecklistController extends Controller
     public function show($id) {
         $checklist = $this->checklistService->getChecklistById($id);
 
-        return $checklist 
-            ? $this->responseSuccess('Checklist fetched successfully.', new ChecklistResource($checklist)) 
+        return $checklist
+            ? $this->responseSuccess('Checklist fetched successfully.', new ChecklistResource($checklist))
             : $this->responseNotFound('Checklist not found.');
     }
-    
+
     public function update(ChecklistRequest $request, $id) {
         $checklist = $this->checklistService->getChecklistById($id);
 
@@ -65,7 +65,7 @@ class ChecklistController extends Controller
 
     public function destroy($id) {
         $checklist = $this->checklistService->deleteChecklist($id);
-    
+
         return $checklist
             ? $this->responseSuccess('Checklist successfully deleted.')
             : $this->responseNotFound('Checklist not found.');

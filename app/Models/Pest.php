@@ -6,10 +6,11 @@ use App\Filters\PestFilter;
 use Essa\APIToolKit\Filters\Filterable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Staudenmeir\EloquentJsonRelations\HasJsonRelationships;
 
 class Pest extends Model
 {
-    use SoftDeletes, Filterable;
+    use SoftDeletes, Filterable, HasJsonRelationships;
 
     protected $guarded = [];
 

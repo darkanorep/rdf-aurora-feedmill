@@ -11,7 +11,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 
 class PermissionController extends Controller
 {
-    
+
     use ApiResponse;
 
     protected $permissionService;
@@ -26,7 +26,7 @@ class PermissionController extends Controller
         $permissions instanceof LengthAwarePaginator
             ? $permissions->setCollection($permissions->getCollection()->transform(function ($item) {
                     return new PermissionResource($item);
-                })) 
+                }))
             : $permissions = PermissionResource::collection($permissions);
 
         return $permissions->isEmpty()
@@ -44,11 +44,11 @@ class PermissionController extends Controller
     public function show($id) {
         $permission = $this->permissionService->getPermissionById($id);
 
-        return $permission 
-            ? $this->responseSuccess('Permission fetched successfully.', new PermissionResource($permission)) 
+        return $permission
+            ? $this->responseSuccess('Permission fetched successfully.', new PermissionResource($permission))
             : $this->responseNotFound('Permission not found.');
     }
-    
+
     public function update(PermissionRequest $request, $id) {
         $permission = $this->permissionService->getPermissionById($id);
 
@@ -64,7 +64,7 @@ class PermissionController extends Controller
 
     public function destroy($id) {
         $permission = $this->permissionService->deletePermission($id);
-    
+
         return $permission
             ? $this->responseSuccess('Status successfully changed.')
             : $this->responseNotFound('Permission not found.');

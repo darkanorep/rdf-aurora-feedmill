@@ -10,6 +10,7 @@ use App\Http\Controllers\PestController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SectionController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\InspectionAreaPestController;
 
 // Route::get('/user', function (Request $request) {
 //     return $request->user();
@@ -26,12 +27,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::resource('inspection-areas', InspectionAreaController::class);
     Route::resource('pests', PestController::class);
 
+    //COBS
     Route::prefix('forms')->group(function () {
         Route::get('by-checklist', [FormController::class, 'getFormByChecklistId']);
         Route::put('by-checklist', [FormController::class, 'updateByChecklistId']);
         Route::delete('by-checklist', [FormController::class, 'deleteByChecklistId']);
         Route::resource('/', FormController::class)->only(['index', 'store']);
     });
+
+    //PESTS
+    Route::resource('sheets', InspectionAreaPestController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
 });
