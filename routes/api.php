@@ -12,6 +12,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SectionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\InspectionAreaPestController;
+use App\Http\Controllers\InspectionAreaInfestationLevelController;
 
 // Route::get('/user', function (Request $request) {
 //     return $request->user();
@@ -39,6 +40,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     //PESTS
     Route::resource('sheets', InspectionAreaPestController::class);
+    //BIRDS
+    Route::resource('surveys', InspectionAreaInfestationLevelController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
 });

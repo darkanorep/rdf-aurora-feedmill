@@ -6,10 +6,10 @@ namespace App\Filters;
 
 use Essa\APIToolKit\Filters\QueryFilters;
 
-class InspectionAreaPestFilter extends QueryFilters
+class InspectionAreaInfestationLevelFilter extends QueryFilters
 {
     protected array $relationSearch = [
-        'pests' => ['name'],
+        'infestationLevels' => ['name'],
         'inspectionAreas' => ['name']
     ];
 
