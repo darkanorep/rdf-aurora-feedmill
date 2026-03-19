@@ -6,11 +6,10 @@ namespace App\Filters;
 
 use Essa\APIToolKit\Filters\QueryFilters;
 
-class UserFilter extends QueryFilters
+class InfestationLevelFilter extends QueryFilters
 {
-    protected array $allowedFilters = ['first_name', 'last_name', 'employee_id', 'username'];
-
-    protected array $columnSearch = ['first_name', 'last_name', 'employee_id', 'username'];
+    protected array $allowedFilters = ['name'];
+    protected array $columnSearch = ['name'];
 
     public function status($status)
     {

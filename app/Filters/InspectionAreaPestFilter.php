@@ -8,7 +8,6 @@ use Essa\APIToolKit\Filters\QueryFilters;
 
 class InspectionAreaPestFilter extends QueryFilters
 {
-
     protected array $relationSearch = [
         'pests' => ['name'],
         'inspectionAreas' => ['name']
@@ -16,12 +15,10 @@ class InspectionAreaPestFilter extends QueryFilters
 
     public function status($status)
     {
-        return $this->builder->withTrashed()->when(!$status, function ($query) {
-            $query->whereNotNull('deleted_at');
-        }, function ($query) use ($status) {
-            $query->when($status, function ($query){
-                $query->whereNull('deleted_at');
-            });
-        });
+        return $this->builder->withTrashed()->when(
+            $status === 'inactive',
+            fn ($query) => $query->whereNotNull('deleted_at'),
+            fn ($query) => $query->whereNull('deleted_at')
+        );
     }
 }

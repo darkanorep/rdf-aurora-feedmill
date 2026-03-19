@@ -49,6 +49,5 @@ class InspectionAreaPestService
         }
 
         return $sheet;
-
     }
 }

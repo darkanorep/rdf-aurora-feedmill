@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
+use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PermissionController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SectionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\InspectionAreaPestController;
+use App\Http\Controllers\InspectionAreaInfestationLevelController;
 
 // Route::get('/user', function (Request $request) {
 //     return $request->user();
@@ -26,6 +28,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::resource('users', UserController::class);
     Route::resource('inspection-areas', InspectionAreaController::class);
     Route::resource('pests', PestController::class);
+    Route::resource('infestation-levels', InfestationLevelController::class);
 
     //COBS
     Route::prefix('forms')->group(function () {
@@ -37,6 +40,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     //PESTS
     Route::resource('sheets', InspectionAreaPestController::class);
+    //BIRDS
+    Route::resource('surveys', InspectionAreaInfestationLevelController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
 });

@@ -38,7 +38,6 @@ class InspectionAreaPestController extends Controller
         $sheet = $this->inspectionAreaPestService->storeSheet($data);
 
         return $this->responseCreated("Sheet Created Successfully", new InspectionAreaPestResource($sheet));
-
     }
 
     public function show($id) {
