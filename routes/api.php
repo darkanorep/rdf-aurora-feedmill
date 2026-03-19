@@ -21,27 +21,30 @@ use App\Http\Controllers\InspectionAreaInfestationLevelController;
 Route::post('login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::resource('checklists', ChecklistController::class);
-    Route::resource('sections', SectionController::class);
-    Route::resource('permissions', PermissionController::class);
-    Route::resource('roles', RoleController::class);
-    Route::resource('users', UserController::class);
-    Route::resource('inspection-areas', InspectionAreaController::class);
-    Route::resource('pests', PestController::class);
-    Route::resource('infestation-levels', InfestationLevelController::class);
 
-    //COBS
-    Route::prefix('forms')->group(function () {
-        Route::get('by-checklist', [FormController::class, 'getFormByChecklistId']);
-        Route::put('by-checklist', [FormController::class, 'updateByChecklistId']);
-        Route::delete('by-checklist', [FormController::class, 'deleteByChecklistId']);
-        Route::resource('/', FormController::class)->only(['index', 'store']);
+    Route::group(['middleware' => 'can:admin'], function () {
+        Route::resource('checklists', ChecklistController::class);
+        Route::resource('sections', SectionController::class);
+        Route::resource('permissions', PermissionController::class);
+        Route::resource('roles', RoleController::class);
+        Route::resource('users', UserController::class);
+        Route::resource('inspection-areas', InspectionAreaController::class);
+        Route::resource('pests', PestController::class);
+        Route::resource('infestation-levels', InfestationLevelController::class);
+
+        //COBS
+        Route::prefix('forms')->group(function () {
+            Route::get('by-checklist', [FormController::class, 'getFormByChecklistId']);
+            Route::put('by-checklist', [FormController::class, 'updateByChecklistId']);
+            Route::delete('by-checklist', [FormController::class, 'deleteByChecklistId']);
+            Route::resource('/', FormController::class)->only(['index', 'store']);
+        });
+
+        //PESTS
+        Route::resource('sheets', InspectionAreaPestController::class);
+        //BIRDS
+        Route::resource('surveys', InspectionAreaInfestationLevelController::class);
     });
-
-    //PESTS
-    Route::resource('sheets', InspectionAreaPestController::class);
-    //BIRDS
-    Route::resource('surveys', InspectionAreaInfestationLevelController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
 });

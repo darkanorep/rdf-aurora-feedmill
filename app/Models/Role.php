@@ -11,13 +11,12 @@ use Staudenmeir\EloquentJsonRelations\HasJsonRelationships;
 class Role extends Model
 {
     use SoftDeletes, Filterable, HasJsonRelationships;
+    const ADMIN = 'Admin';
 
     protected $default_filters = RoleFilter::class;
 
     protected $guarded = [];
 
-    public const SUPER_ADMIN = 'Super Admin';
-    public const ADMIN = 'Admin';
 
     protected $casts = [
         'permission_id' => 'json',
