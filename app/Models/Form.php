@@ -14,4 +14,8 @@ class Form extends Model
     protected $guarded = [];
 
     protected $default_filters = FormFilter::class;
+
+    public function checklist() {
+        return $this->belongsTo(Checklist::class);
+    }
 }

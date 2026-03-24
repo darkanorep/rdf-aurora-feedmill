@@ -55,7 +55,7 @@ class FormService
 
     public function getFormByChecklistId($checkListId)
     {
-        $forms = $this->form->where('checklist_id', $checkListId)->get();
+        $forms = $this->form->with(['checklist'])->where('checklist_id', $checkListId)->get();
 
         $grouped = $forms->groupBy('name')->map(function ($items, $name) {
             return [
@@ -71,6 +71,7 @@ class FormService
 
         return [
             'checklist_id' => (int) $checkListId,
+            'checklist' => $forms->first()?->checklist?->name,
             'forms' => $grouped,
         ];
     }
@@ -79,7 +80,7 @@ class FormService
     {
         DB::transaction(function () use ($data, $checklistId) {
             $this->form->where('checklist_id', $checklistId)->delete();
-            
+
             $records = $this->buildFormRecords($checklistId, $data['forms']);
             $this->form->insert($records);
         });
