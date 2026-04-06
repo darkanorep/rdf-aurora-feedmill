@@ -5,6 +5,7 @@ use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
+use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\PestController;
@@ -31,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::resource('inspection-areas', InspectionAreaController::class);
         Route::resource('pests', PestController::class);
         Route::resource('infestation-levels', InfestationLevelController::class);
+        Route::resource('units', UnitController::class);
 
         //COBS
         Route::prefix('forms')->group(function () {
