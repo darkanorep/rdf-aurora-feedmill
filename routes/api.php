@@ -5,6 +5,7 @@ use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
+use App\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\PestController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\SectionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\InspectionAreaPestController;
 use App\Http\Controllers\InspectionAreaInfestationLevelController;
+use App\Http\Controllers\ScoreController;
 
 // Route::get('/user', function (Request $request) {
 //     return $request->user();
@@ -31,6 +33,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::resource('inspection-areas', InspectionAreaController::class);
         Route::resource('pests', PestController::class);
         Route::resource('infestation-levels', InfestationLevelController::class);
+        Route::resource('units', UnitController::class);
+        Route::resource('scores', ScoreController::class);
 
         //COBS
         Route::prefix('forms')->group(function () {

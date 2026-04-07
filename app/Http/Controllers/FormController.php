@@ -43,7 +43,7 @@ class FormController extends Controller
     }
 
     public function updateByChecklistId(FormmRequest $request) {
-        
+
         $data = $request->validated();
         $this->formService->updateByChecklistId($data, $request->checklist_id);
 
@@ -51,11 +51,11 @@ class FormController extends Controller
     }
 
     public function deleteByChecklistId(Request $request) {
-        
+
         $this->formService->deleteByChecklistId($request->checklist_id);
 
         return $this->responseSuccess("Form deleted successfully.");
     }
-    
+
 
 }

@@ -2,20 +2,15 @@
 
 namespace App\Models;
 
-use App\Filters\FormFilter;
+use App\Filters\ScoreFilter;
 use Essa\APIToolKit\Filters\Filterable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Form extends Model
+class Score extends Model
 {
     use SoftDeletes, Filterable;
 
+    protected $default_filters = ScoreFilter::class;
     protected $guarded = [];
-
-    protected $default_filters = FormFilter::class;
-
-    public function checklist() {
-        return $this->belongsTo(Checklist::class);
-    }
 }

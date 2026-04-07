@@ -2,20 +2,16 @@
 
 namespace App\Models;
 
-use App\Filters\FormFilter;
+use App\Filters\UnitFilter;
 use Essa\APIToolKit\Filters\Filterable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Form extends Model
+class Unit extends Model
 {
     use SoftDeletes, Filterable;
 
     protected $guarded = [];
+    protected string $default_filters = UnitFilter::class;
 
-    protected $default_filters = FormFilter::class;
-
-    public function checklist() {
-        return $this->belongsTo(Checklist::class);
-    }
 }
