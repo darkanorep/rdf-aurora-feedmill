@@ -22,15 +22,13 @@ class SectionController extends Controller
     public function index(Request $request) {
         $sections = $this->sectionService->getSections($request);
 
-        $sections instanceof LengthAwarePaginator
-            ? $sections->setCollection($sections->getCollection()->transform(function ($item) {
-                    return new SectionResource($item);
-                })) 
-            : $sections = SectionResource::collection($sections);
+        if ($sections->isEmpty()) {
+            return $this->responseNotFound('No Sections found.');
+        }
 
-        return $sections->isEmpty()
-            ? $this->responseNotFound('No Sections found.')
-            : $this->responseSuccess('Sections fetched successfully.', $sections);
+        return $sections instanceof LengthAwarePaginator
+            ? $sections->through(fn($item) => new SectionResource($item))
+            : $this->responseSuccess('Sections fetched successfully', SectionResource::collection($sections));
     }
 
     public function store(SectionRequest $request) {
@@ -39,12 +37,12 @@ class SectionController extends Controller
 
         return $this->responseCreated("Created Successfully", new SectionResource($section));
     }
-    
+
     public function show($id) {
         $section = $this->sectionService->getSectionById($id);
 
-        return $section 
-            ? $this->responseSuccess('Section fetched successfully.', new SectionResource($section)) 
+        return $section
+            ? $this->responseSuccess('Section fetched successfully.', new SectionResource($section))
             : $this->responseNotFound('Section not found.');
     }
 
@@ -63,7 +61,7 @@ class SectionController extends Controller
 
     public function destroy($id) {
         $section = $this->sectionService->deleteSection($id);
-    
+
         return $section
             ? $this->responseSuccess('Section successfully deleted.')
             : $this->responseNotFound('Section not found.');

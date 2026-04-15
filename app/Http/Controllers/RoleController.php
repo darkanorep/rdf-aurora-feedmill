@@ -22,15 +22,13 @@ class RoleController extends Controller
     public function index(Request $request) {
         $roles = $this->roleService->getRoles($request);
 
-        $roles instanceof LengthAwarePaginator
-            ? $roles->setCollection($roles->getCollection()->transform(function ($item) {
-                    return new RoleResource($item);
-                })) 
-            : $roles = RoleResource::collection($roles);
+        if ($roles->isEmpty()) {
+            return $this->responseNotFound('No Roles found.');
+        }
 
-        return $roles->isEmpty()
-            ? $this->responseNotFound('No Roles found.')
-            : $this->responseSuccess('Roles fetched successfully.', $roles);
+        return $roles instanceof LengthAwarePaginator
+            ? $roles->through(fn($item) => new RoleResource($item))
+            : $this->responseSuccess('Roles fetched successfully.', RoleResource::collection($roles));
     }
 
     public function store(RoleRequest $request) {
@@ -39,12 +37,12 @@ class RoleController extends Controller
 
         return $this->responseCreated("Created Successfully", new RoleResource($role));
     }
-    
+
     public function show($id) {
         $role = $this->roleService->getRoleById($id);
 
-        return $role 
-            ? $this->responseSuccess('Role fetched successfully.', new RoleResource($role)) 
+        return $role
+            ? $this->responseSuccess('Role fetched successfully.', new RoleResource($role))
             : $this->responseNotFound('Role not found.');
     }
 
@@ -63,7 +61,7 @@ class RoleController extends Controller
 
     public function destroy($id) {
         $role = $this->roleService->deleteRole($id);
-    
+
         return $role
             ? $this->responseSuccess('Status successfully changed.')
             : $this->responseNotFound('Role not found.');

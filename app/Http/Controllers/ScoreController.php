@@ -21,15 +21,13 @@ class ScoreController extends Controller
     public function index(Request $request) {
         $scores = $this->scoreService->getScores($request);
 
-        $scores instanceof LengthAwarePaginator
-            ? $scores->setCollection($scores->getCollection()->transform(function ($item) {
-            return new ScoreResource($item);
-        }))
-            : $scores = ScoreResource::collection($scores);
+        if ($scores->isEmpty()) {
+            return $this->responseNotFound('No Score found.');
+        }
 
-        return $scores->isEmpty()
-            ? $this->responseNotFound('No Score found.')
-            : $this->responseSuccess('Score fetched successfully.', $scores);
+        return $scores instanceof LengthAwarePaginator
+            ? $scores->through(fn($item) => new ScoreResource($item))
+            : $this->responseSuccess('Score fetched successfully.', ScoreResource::collection($scores));
     }
 
     public function store(ScoreRequest $request) {

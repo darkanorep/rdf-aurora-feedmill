@@ -21,15 +21,13 @@ class InfestationLevelController extends Controller
     public function index(Request $request) {
         $infestationLevels = $this->infestationLevelService->getInfestationLevels($request);
 
-        $infestationLevels instanceof LengthAwarePaginator
-            ? $infestationLevels->setCollection($infestationLevels->getCollection()->transform(function ($item) {
-            return new InfestationLevelResource($item);
-        }))
-            : $infestationLevels = InfestationLevelResource::collection($infestationLevels);
+        if ($infestationLevels->isEmpty()) {
+            return $this->responseNotFound('No Infestation Level found.');
+        }
 
-        return $infestationLevels->isEmpty()
-            ? $this->responseNotFound('No Infestation Level found.')
-            : $this->responseSuccess('Infestation Level fetched successfully.', $infestationLevels);
+        return $infestationLevels instanceof LengthAwarePaginator
+            ? $infestationLevels->through(fn($item) => new InfestationLevelResource($item))
+            : $this->responseSuccess('Infestation Level fetched successfully.', InfestationLevelResource::collection($infestationLevels));
     }
 
     public function store(InfestationLevelRequest $request) {

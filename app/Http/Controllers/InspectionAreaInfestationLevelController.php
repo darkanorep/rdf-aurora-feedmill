@@ -21,15 +21,13 @@ class InspectionAreaInfestationLevelController extends Controller
     public function index(Request $request) {
         $surveys = $this->inspectionAreaInfestationLevelService->getSurveys($request);
 
-        $surveys instanceof LengthAwarePaginator
-            ? $surveys->setCollection($surveys->getCollection()->transform(function ($item) {
-            return new InspectionAreaInfestationLevelResource($item);
-        }))
-            : $surveys = InspectionAreaInfestationLevelResource::collection($surveys);
+        if ($surveys->isEmpty()) {
+            return $this->responseNotFound('No Surveys found.');
+        }
 
-        return $surveys->isEmpty()
-            ? $this->responseNotFound('No Surveys found.')
-            : $this->responseSuccess('Surveys fetched successfully.', $surveys);
+        return $surveys instanceof LengthAwarePaginator
+            ? $surveys->through(fn($item) => new InspectionAreaInfestationLevelResource($item))
+            : $this->responseSuccess('Surveys fetched successfully.', InspectionAreaInfestationLevelResource::collection($surveys));
     }
 
     public function store(InspectionAreaInfestationLevelRequest $request) {
