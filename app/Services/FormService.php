@@ -21,6 +21,7 @@ class FormService
         $grouped = $forms->groupBy('checklist_id')->map(function ($checklistForms, $checklistId) {
             return [
                 'checklist_id' => (int) $checklistId,
+                'checklist' => $checklistForms->first()?->checklist?->name,
                 'forms' => $checklistForms->groupBy('name')->map(function ($items, $name) {
                     return [
                         'name' => $name,
