@@ -44,6 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('by-checklist', [FormController::class, 'updateByChecklistId']);
             Route::delete('by-checklist', [FormController::class, 'deleteByChecklistId']);
             Route::resource('/', FormController::class)->only(['index', 'store']);
+            Route::post('upload', [FormController::class, 'upload']);
         });
 
         //PESTS
