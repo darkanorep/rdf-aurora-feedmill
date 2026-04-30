@@ -5,6 +5,7 @@ use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
+use App\Http\Controllers\ResponseController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\WastageController;
 use Illuminate\Support\Facades\Route;
@@ -44,6 +45,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('by-checklist', [FormController::class, 'updateByChecklistId']);
             Route::delete('by-checklist', [FormController::class, 'deleteByChecklistId']);
             Route::resource('/', FormController::class)->only(['index', 'store']);
+            Route::post('upload', [FormController::class, 'upload']);
         });
 
         //PESTS
@@ -51,6 +53,8 @@ Route::middleware('auth:sanctum')->group(function () {
         //BIRDS
         Route::resource('surveys', InspectionAreaInfestationLevelController::class);
     });
+
+    Route::resource('responses', ResponseController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
 });

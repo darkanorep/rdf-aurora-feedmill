@@ -32,6 +32,12 @@ RUN { \
     echo 'opcache.file_cache=/tmp'; \
     } > /usr/local/etc/php/conf.d/opcache.ini
 
+# Configure PHP upload limits
+RUN { \
+    echo 'upload_max_filesize = 50M'; \
+    echo 'post_max_size = 50M'; \
+    } > /usr/local/etc/php/conf.d/uploads.ini
+
 # Configure PHP-FPM for better performance
 RUN { \
     echo '[www]'; \

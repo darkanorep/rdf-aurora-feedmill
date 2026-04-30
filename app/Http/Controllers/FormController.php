@@ -6,6 +6,7 @@ use App\Http\Requests\FormmRequest;
 use App\Services\FormService;
 use Essa\APIToolKit\Api\ApiResponse;
 use Illuminate\Http\Request;
+use ImageKit\ImageKit;
 
 class FormController extends Controller
 {
@@ -57,5 +58,60 @@ class FormController extends Controller
         return $this->responseSuccess("Form deleted successfully.");
     }
 
+    public function upload(Request $request)
+    {
+        $validated = $request->validate([
+            'images' => ['required', 'array'],
+            'images.*' => ['required', 'image', 'max:10240'],
+        ]);
+
+        $imageKit = new ImageKit(
+            config('app.imagekit_public_key'),
+            config('app.imagekit_private_key'),
+            config('app.imagekit_url_endpoint')
+        );
+
+        $uploadedFiles = [];
+        $failedFiles = [];
+
+        foreach ($validated['images'] as $file) {
+            $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+
+            try {
+                $uploadFile = $imageKit->uploadFile([
+                    'file' => fopen($file->getRealPath(), 'r'),
+                    'fileName' => $fileName
+                ]);
+
+                // Convert Response object to array
+                $responseData = json_decode(json_encode($uploadFile), true);
+
+                $uploadedFiles[] = [
+                    'original_name' => $file->getClientOriginalName(),
+                    'fileName' => $fileName,
+                    'url' => $responseData['result']['url'] ?? null,
+                    'fileId' => $responseData['result']['fileId'] ?? null,
+                ];
+            } catch (\Throwable $e) {
+                $failedFiles[] = [
+                    'original_name' => $file->getClientOriginalName(),
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        if (empty($uploadedFiles) && !empty($failedFiles)) {
+            return response()->json([
+                'message' => 'All images failed to upload.',
+                'failed' => $failedFiles,
+            ], 400);
+        }
+
+        return response()->json([
+            'message' => 'Images uploaded ' . (empty($failedFiles) ? 'successfully.' : 'with some failures.'),
+            'uploaded' => $uploadedFiles,
+            'failed' => $failedFiles,
+        ]);
+    }
 
 }
