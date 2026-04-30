@@ -22,7 +22,7 @@ class UnitController extends Controller
         $units = $this->unitService->getUnits($request);
 
         if ($units->isEmpty()) {
-            return $this->responseNotFound('No Users found.');
+            return $this->responseNotFound('No Units found.');
         }
 
         return $units instanceof LengthAwarePaginator
