@@ -20,7 +20,7 @@ class InspectionAreaPestController extends Controller
     }
 
     public function index(Request $request) {
-        $sheets = $this->inspectionAreaPestService->getSheets($request);
+        $sheets = $this->inspectionAreaPestService->getSheets();
 
         if ($sheets->isEmpty()) {
             return $this->responseNotFound('No Sheets found.');
