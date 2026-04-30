@@ -21,7 +21,7 @@ class InspectionAreaController extends Controller
     }
 
     public function index(Request $request) {
-        $inspectionAreas = $this->inspectionAreaService->getInspectionAreas($request);
+        $inspectionAreas = $this->inspectionAreaService->getInspectionAreas();
 
         if ($inspectionAreas->isEmpty()) {
             return $this->responseNotFound('No Inspection Areas found.');
