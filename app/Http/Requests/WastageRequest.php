@@ -22,7 +22,7 @@ class WastageRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => 'required|string|unique:wastages,name,' . $this->route('wastage'),
+            'name' => 'required|string|max:255|unique:wastages,name,' . $this->route('wastage'),
         ];
     }
 }
