@@ -18,7 +18,7 @@ class WastageController extends Controller
     }
 
     public function index(Request $request) {
-        $wastages = $this->wastageService->getWastage($request);
+        $wastages = $this->wastageService->getWastage();
 
         if ($wastages->isEmpty()) {
             return $this->responseNotFound('No Wastages found.');
