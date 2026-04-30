@@ -61,7 +61,7 @@ class WastageController extends Controller
         $wastage = $this->wastageService->deleteWastage($id);
 
         return $wastage
-            ? $this->responseSuccess('Wastage successfully deleted.')
+            ? $this->responseSuccess('Wastage status successfully changed.')
             : $this->responseNotFound('Wastage not found.');
     }
 }
