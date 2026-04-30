@@ -3,8 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\PestRequest;
-use App\Http\Requests\StorePestRequest;
-use App\Http\Requests\UpdatePestRequest;
 use App\Http\Resources\PestResource;
 use App\Models\Pest;
 use App\Services\PestService;
@@ -25,15 +23,13 @@ class PestController extends Controller
     public function index(Request $request) {
         $pests = $this->pestService->getPests($request);
 
-        $pests instanceof LengthAwarePaginator
-            ? $pests->setCollection($pests->getCollection()->transform(function ($item) {
-                    return new PestResource($item);
-                })) 
-            : $pests = PestResource::collection($pests);
+        if ($pests->isEmpty()) {
+            return $this->responseNotFound('No Pests found.');
+        }
 
-        return $pests->isEmpty()
-            ? $this->responseNotFound('No Pests found.')
-            : $this->responseSuccess('Pests fetched successfully.', $pests);
+        return $pests instanceof LengthAwarePaginator
+            ? $pests->through(fn($item) => new PestResource($item))
+            : $this->responseSuccess('Pests fetched successfully.', PestResource::collection($pests));
     }
 
     public function store(PestRequest $request) {
@@ -42,12 +38,12 @@ class PestController extends Controller
 
         return $this->responseCreated("Created Successfully", new PestResource($pest));
     }
-    
+
     public function show($id) {
         $pest = $this->pestService->getPestById($id);
 
-        return $pest 
-            ? $this->responseSuccess('Pest fetched successfully.', new PestResource($pest)) 
+        return $pest
+            ? $this->responseSuccess('Pest fetched successfully.', new PestResource($pest))
             : $this->responseNotFound('Pest not found.');
     }
 
@@ -66,7 +62,7 @@ class PestController extends Controller
 
     public function destroy($id) {
         $pest = $this->pestService->deletePest($id);
-    
+
         return $pest
             ? $this->responseSuccess('Status successfully changed.')
             : $this->responseNotFound('Pest not found.');

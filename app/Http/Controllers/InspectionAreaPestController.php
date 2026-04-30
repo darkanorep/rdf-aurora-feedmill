@@ -20,17 +20,15 @@ class InspectionAreaPestController extends Controller
     }
 
     public function index(Request $request) {
-        $sheets = $this->inspectionAreaPestService->getSheets($request);
+        $sheets = $this->inspectionAreaPestService->getSheets();
 
-        $sheets instanceof LengthAwarePaginator
-            ? $sheets->setCollection($sheets->getCollection()->transform(function ($item) {
-            return new InspectionAreaPestResource($item);
-        }))
-            : $sheets = InspectionAreaPestResource::collection($sheets);
+        if ($sheets->isEmpty()) {
+            return $this->responseNotFound('No Sheets found.');
+        }
 
-        return $sheets->isEmpty()
-            ? $this->responseNotFound('No Sheets found.')
-            : $this->responseSuccess('Sheets fetched successfully.', $sheets);
+        return $sheets instanceof LengthAwarePaginator
+            ? $sheets->through(fn($item) => new InspectionAreaPestResource($item))
+            : $this->responseSuccess('Sheets fetched successfully.', InspectionAreaPestResource::collection($sheets));
     }
 
     public function store(InspectionAreaPestRequest $request) {

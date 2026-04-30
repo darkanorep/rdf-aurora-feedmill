@@ -23,15 +23,13 @@ class PermissionController extends Controller
     public function index(Request $request) {
         $permissions = $this->permissionService->getPermissions($request);
 
-        $permissions instanceof LengthAwarePaginator
-            ? $permissions->setCollection($permissions->getCollection()->transform(function ($item) {
-                    return new PermissionResource($item);
-                }))
-            : $permissions = PermissionResource::collection($permissions);
+        if ($permissions->isEmpty()) {
+            return $this->responseNotFound('No Permissions found.');
+        }
 
-        return $permissions->isEmpty()
-            ? $this->responseNotFound('No Permissions found.')
-            : $this->responseSuccess('Permissions fetched successfully.', $permissions);
+        return $permissions instanceof LengthAwarePaginator
+            ? $permissions->through(fn($item) => new PermissionResource($item))
+            : $this->responseSuccess('Permissions fetched successfully.', PermissionResource::collection($permissions));
     }
 
     public function store(PermissionRequest $request) {

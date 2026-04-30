@@ -21,15 +21,13 @@ class UnitController extends Controller
     public function index(Request $request) {
         $units = $this->unitService->getUnits($request);
 
-        $units instanceof LengthAwarePaginator
-            ? $units->setCollection($units->getCollection()->transform(function ($item) {
-            return new UnitResource($item);
-        }))
-            : $units = UnitResource::collection($units);
+        if ($units->isEmpty()) {
+            return $this->responseNotFound('No Units found.');
+        }
 
-        return $units->isEmpty()
-            ? $this->responseNotFound('No Units found.')
-            : $this->responseSuccess('Units fetched successfully.', $units);
+        return $units instanceof LengthAwarePaginator
+            ? $units->through(fn($item) => new UnitResource($item))
+            : $this->responseSuccess('Units fetched successfully', UnitResource::collection($units));
     }
 
     public function store(UnitRequest $request) {

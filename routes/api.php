@@ -6,6 +6,7 @@ use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
 use App\Http\Controllers\UnitController;
+use App\Http\Controllers\WastageController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\PestController;
@@ -35,6 +36,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::resource('infestation-levels', InfestationLevelController::class);
         Route::resource('units', UnitController::class);
         Route::resource('scores', ScoreController::class);
+        Route::resource('wastages', WastageController::class);
 
         //COBS
         Route::prefix('forms')->group(function () {

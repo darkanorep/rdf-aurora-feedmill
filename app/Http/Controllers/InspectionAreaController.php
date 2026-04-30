@@ -21,17 +21,15 @@ class InspectionAreaController extends Controller
     }
 
     public function index(Request $request) {
-        $inspectionAreas = $this->inspectionAreaService->getInspectionAreas($request);
+        $inspectionAreas = $this->inspectionAreaService->getInspectionAreas();
 
-        $inspectionAreas instanceof LengthAwarePaginator
-            ? $inspectionAreas->setCollection($inspectionAreas->getCollection()->transform(function ($item) {
-                    return new InspectionAreaResource($item);
-                }))
-            : $inspectionAreas = InspectionAreaResource::collection($inspectionAreas);
+        if ($inspectionAreas->isEmpty()) {
+            return $this->responseNotFound('No Inspection Areas found.');
+        }
 
-        return $inspectionAreas->isEmpty()
-            ? $this->responseNotFound('No Inspection Areas found.')
-            : $this->responseSuccess('Inspection Areas fetched successfully.', $inspectionAreas);
+        return $inspectionAreas instanceof LengthAwarePaginator
+            ? $inspectionAreas->through(fn($item) => new InspectionAreaResource($item))
+            : $this->responseSuccess('Inspection Areas fetched successfully.', InspectionAreaResource::collection($inspectionAreas));
     }
 
     public function store(InspectionAreaRequest $request) {

@@ -5,7 +5,7 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class ScoreResource extends JsonResource
+class WastageResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -16,8 +16,7 @@ class ScoreResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'score' => $this->score,
-            'rating' => $this->rating
+            'name' => $this->name
         ];
     }
 }

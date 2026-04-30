@@ -21,15 +21,13 @@ class UserController extends Controller
     public function index(Request $request) {
         $users = $this->userService->getUsers($request);
 
-        $users instanceof LengthAwarePaginator
-            ? $users->setCollection($users->getCollection()->transform(function ($item) {
-                    return new UserResource($item);
-                })) 
-            : $users = UserResource::collection($users);
+        if ($users->isEmpty()) {
+            return $this->responseNotFound('No Users found.');
+        }
 
-        return $users->isEmpty()
-            ? $this->responseNotFound('No Users found.')
-            : $this->responseSuccess('Users fetched successfully.', $users);
+        return $users instanceof LengthAwarePaginator
+            ? $users->through(fn($item) => new UserResource($item))
+            : $this->responseSuccess('Users fetched successfully', UserResource::collection($users));
     }
 
     public function store(UserRequest $request) {
@@ -42,8 +40,8 @@ class UserController extends Controller
     public function show($id) {
         $user = $this->userService->getUserById($id);
 
-        return $user 
-            ? $this->responseSuccess('User fetched successfully.', new UserResource($user)) 
+        return $user
+            ? $this->responseSuccess('User fetched successfully.', new UserResource($user))
             : $this->responseNotFound('User not found.');
     }
 
@@ -62,7 +60,7 @@ class UserController extends Controller
 
     public function destroy($id) {
         $user = $this->userService->deleteUser($id);
-    
+
         return $user
             ? $this->responseSuccess('User successfully deleted.')
             : $this->responseNotFound('User not found.');

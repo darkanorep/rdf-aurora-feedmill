@@ -22,15 +22,13 @@ class ChecklistController extends Controller
     public function index() {
         $checklists = $this->checklistService->getChecklists();
 
-        $checklists instanceof LengthAwarePaginator
-            ? $checklists->setCollection($checklists->getCollection()->transform(function ($item) {
-                    return new ChecklistResource($item);
-                }))
-            : $checklists = ChecklistResource::collection($checklists);
+        if ($checklists->isEmpty()) {
+            return $this->responseNotFound('No Checklists found.');
+        }
 
-        return $checklists->isEmpty()
-            ? $this->responseNotFound('No Checklists found.')
-            : $this->responseSuccess('Checklists fetched successfully.', $checklists);
+        return $checklists instanceof LengthAwarePaginator
+            ? $checklists->through(fn($item) => new ChecklistResource($item))
+            : $this->responseSuccess('Checklists fetched successfully.', ChecklistResource::collection($checklists));
     }
 
     public function store(ChecklistRequest $request) {
