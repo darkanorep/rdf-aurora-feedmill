@@ -5,6 +5,7 @@ use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
+use App\Http\Controllers\ResponseController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\WastageController;
 use Illuminate\Support\Facades\Route;
@@ -52,6 +53,8 @@ Route::middleware('auth:sanctum')->group(function () {
         //BIRDS
         Route::resource('surveys', InspectionAreaInfestationLevelController::class);
     });
+
+    Route::resource('responses', ResponseController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
 });
