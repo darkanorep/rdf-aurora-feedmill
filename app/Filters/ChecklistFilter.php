@@ -11,7 +11,9 @@ class ChecklistFilter extends QueryFilters
     protected array $allowedFilters = [];
 
     protected array $columnSearch = [];
-    protected array $relationSearch = ['section'];
+    protected array $relationSearch = [
+        'section' => ['name']
+    ];
 
     public function status($status)
     {
