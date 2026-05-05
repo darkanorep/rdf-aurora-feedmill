@@ -17,6 +17,7 @@ class ChecklistResource extends JsonResource
         return [
             'id' => $this->id,
             'section' => new SectionResource($this->whenLoaded('section')),
+            'checklist_name' => $this->checklist_name,
             'items' => $this->items
         ];
     }

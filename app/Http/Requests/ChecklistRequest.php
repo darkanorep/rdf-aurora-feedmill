@@ -23,6 +23,7 @@ class ChecklistRequest extends FormRequest
     {
         return [
             'section_id' => 'required|exists:sections,id',
+            'checklist_name' => 'required|string|unique:checklists,checklist_name',
             'items' => 'required'
         ];
     }
