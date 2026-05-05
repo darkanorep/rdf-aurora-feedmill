@@ -5,7 +5,7 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class ChecklistResource extends JsonResource
+class MergeFormResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -16,8 +16,8 @@ class ChecklistResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'section' => new SectionResource($this->whenLoaded('section')),
-            'items' => $this->items
+            'name' => $this->name,
+            'forms' => $this->forms,
         ];
     }
 }

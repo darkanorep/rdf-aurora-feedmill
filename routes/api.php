@@ -5,6 +5,7 @@ use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
+use App\Http\Controllers\MergeFormController;
 use App\Http\Controllers\ResponseController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\WastageController;
@@ -39,14 +40,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::resource('scores', ScoreController::class);
         Route::resource('wastages', WastageController::class);
 
-        //COBS
-        Route::prefix('forms')->group(function () {
-            Route::get('by-checklist', [FormController::class, 'getFormByChecklistId']);
-            Route::put('by-checklist', [FormController::class, 'updateByChecklistId']);
-            Route::delete('by-checklist', [FormController::class, 'deleteByChecklistId']);
-            Route::resource('/', FormController::class)->only(['index', 'store']);
-            Route::post('upload', [FormController::class, 'upload']);
-        });
+        // ❌ COBS QUESTIONNAIRES CONSOLIDATOR
+        //Route::resource('merge-forms', MergeFormController::class);
+
+        // ❌ COBS
+//        Route::prefix('forms')->group(function () {
+//            Route::get('by-checklist', [FormController::class, 'getFormByChecklistId']);
+//            Route::put('by-checklist', [FormController::class, 'updateByChecklistId']);
+//            Route::delete('by-checklist', [FormController::class, 'deleteByChecklistId']);
+//            Route::resource('/', FormController::class)->only(['index', 'store']);
+//            Route::post('upload', [FormController::class, 'upload']);
+//        });
 
         //PESTS
         Route::resource('sheets', InspectionAreaPestController::class);
@@ -54,6 +58,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::resource('surveys', InspectionAreaInfestationLevelController::class);
     });
 
+    Route::resource('questionnaires', ChecklistController::class)->only(['show']);
     Route::resource('responses', ResponseController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);

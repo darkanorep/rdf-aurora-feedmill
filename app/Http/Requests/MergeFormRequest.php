@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class ChecklistRequest extends FormRequest
+class MergeFormRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -22,15 +22,8 @@ class ChecklistRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'section_id' => 'required|exists:sections,id',
-            'items' => 'required'
-        ];
-    }
-
-    public function attributes()
-    {
-        return [
-            'section_id' => 'section',
+            'name' => 'required',
+            'forms' => 'required',
         ];
     }
 }

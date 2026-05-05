@@ -14,12 +14,12 @@ class FormService
     {
         $this->form = $form;
     }
-
     public function getForms() {
         $forms = $this->form->useFilters()->get();
 
         $grouped = $forms->groupBy('checklist_id')->map(function ($checklistForms, $checklistId) {
             return [
+                'id' => $checklistForms->first()?->id,
                 'checklist_id' => (int) $checklistId,
                 'checklist' => $checklistForms->first()?->checklist?->name,
                 'forms' => $checklistForms->groupBy('name')->map(function ($items, $name) {
@@ -47,13 +47,11 @@ class FormService
             'query' => request()->query(),
         ]);
     }
-
     public function createForm($data)
     {
         $records = $this->buildFormRecords($data['checklist_id'], $data['forms']);
         $this->form->insert($records);
     }
-
     public function getFormByChecklistId($checkListId)
     {
         $forms = $this->form->with(['checklist'])->where('checklist_id', $checkListId)->get();
@@ -76,7 +74,6 @@ class FormService
             'forms' => $grouped,
         ];
     }
-
     public function updateByChecklistId($data, $checklistId)
     {
         DB::transaction(function () use ($data, $checklistId) {
@@ -86,12 +83,10 @@ class FormService
             $this->form->insert($records);
         });
     }
-
     public function deleteByChecklistId($checklistId)
     {
         $this->form->where('checklist_id', $checklistId)->delete();
     }
-
     private function buildFormRecords($checklistId, array $forms): array
     {
         $records = [];

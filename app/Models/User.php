@@ -51,4 +51,21 @@ class User extends Authenticatable
     public function role() {
         return $this->belongsTo(Role::class);
     }
+
+    public function getFullNameAttribute()
+    {
+        $fullName = $this->first_name;
+
+        if ($this->middle_name) {
+            $fullName .= ' ' . $this->middle_name;
+        }
+
+        $fullName .= ' ' . $this->last_name;
+
+        if ($this->suffix) {
+            $fullName .= ', ' . $this->suffix;
+        }
+
+        return $fullName;
+    }
 }

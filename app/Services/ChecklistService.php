@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Checklist;
+use Illuminate\Support\Facades\DB;
 
 class ChecklistService
 {
@@ -29,17 +30,17 @@ class ChecklistService
 
     public function deleteChecklist($id) {
         $checklist = Checklist::withTrashed()->find($id);
-    
+
         if (!$checklist) {
             return null;
         }
-    
+
         if ($checklist->trashed()) {
             $checklist->restore();
         } else {
             $checklist->delete();
         }
-    
+
         return $checklist;
     }
 }
