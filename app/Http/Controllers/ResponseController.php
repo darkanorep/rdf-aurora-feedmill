@@ -14,6 +14,10 @@ class ResponseController extends Controller
         $this->responseService = $responseService;
     }
 
+    public function index(Request $request) {
+        return $this->responseService->getResponses($request);
+    }
+
     public function store(Request $request)
     {
         $data = $request->all();

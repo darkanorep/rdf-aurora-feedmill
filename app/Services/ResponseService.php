@@ -5,6 +5,8 @@ namespace App\Services;
 use AllowDynamicProperties;
 use App\Models\Image;
 use App\Models\Response;
+use App\Models\Unit;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use ImageKit\ImageKit;
 
@@ -21,7 +23,52 @@ class ResponseService
     {
         $this->response = $response;
     }
+    public function getResponses($request) {
+        $responses = $this->response->useFilters()->get();
 
+        $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
+            $firstResponse = $batchResponses->first();
+            $startAt = $firstResponse?->start_at;
+
+            return [
+                'batch_no' => (int) $batchNo,
+                'section_id' => $firstResponse?->section_id,
+                'section' => $firstResponse?->section?->name,
+                'unit_id' => $firstResponse?->unit_id,
+                'unit' => $firstResponse?->unit?->name,
+                'user_id' => $firstResponse?->user_id,
+                'user' => $firstResponse?->user?->getFullNameAttribute(),
+                'approver_id' => $firstResponse?->approver_id,
+                'approver' => $firstResponse?->approver?->getFullNameAttribute(),
+                'is_completed' => $firstResponse?->is_completed,
+                'start_at' => $startAt,
+                'end_at' => $firstResponse?->end_at,
+                'week' => $startAt ? min(Carbon::parse($startAt)->weekOfMonth, 4) : null,
+                'responses' => $batchResponses->map(function ($response) {
+                    return [
+                        'id' => $response->id,
+                        'response' => $response->response,
+                        'images' => $response->images->pluck('url'),
+                    ];
+                })->values(),
+            ];
+        })->values();
+
+        $batchesByUnit = $batches->groupBy('unit_id');
+
+        return Unit::query()->get()->mapWithKeys(function ($unit) use ($batchesByUnit) {
+            $unitBatches = $batchesByUnit->get($unit->id, collect());
+            $batchesByWeek = $unitBatches->groupBy('week');
+
+            return [
+                'Unit: ' . $unit->name => collect(range(1, 4))->mapWithKeys(function ($week) use ($batchesByWeek) {
+                    return [
+                        'Week ' . $week => $batchesByWeek->get($week, collect())->values()->all(),
+                    ];
+                })->all(),
+            ];
+        });
+    }
     public function storeResponse(array $data)
     {
         $batchNo = $this->generateBatchNo();
@@ -47,10 +94,14 @@ class ResponseService
 
             $response = $this->response->create([
                 'section_id' => $data['section_id'] ?? null,
+                'unit_id' => $data['unit_id'] ?? null,
                 'user_id' => $data['user_id'] ?? null,
                 'approver_id' => $data['approver_id'] ?? null,
                 'batch_no' => $batchNo,
                 'response' => $responseData,
+                'start_at' => Carbon::now(),
+                'is_completed' => $data['is_completed'] ?? null,
+                'end_at' => $data['is_completed'] ? Carbon::now() : null,
             ]);
 
             $images = $imagesData[$key] ?? [];
@@ -76,7 +127,6 @@ class ResponseService
             }
         }
     }
-
     private function generateBatchNo()
     {
         return DB::table('responses')->max('batch_no') + 1;

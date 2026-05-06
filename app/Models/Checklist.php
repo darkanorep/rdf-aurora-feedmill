@@ -15,6 +15,10 @@ class Checklist extends Model
 
     protected $guarded = [];
 
+    protected $casts = [
+        'items' => 'json',
+    ];
+
     public function section() {
         return $this->belongsTo(Section::class);
     }
