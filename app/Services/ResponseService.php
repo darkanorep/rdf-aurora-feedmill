@@ -48,7 +48,7 @@ class ResponseService
                     return [
                         'id' => $response->id,
                         'response' => $response->response,
-                        'images' => $response->images()->pluck('url'),
+                        'images' => $response->images->pluck('url'),
                     ];
                 })->values(),
             ];
