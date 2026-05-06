@@ -37,7 +37,7 @@ class ResponseService
                 'batch_no' => (int) $batchNo,
                 'progress' => (int) $progress . '%' ,
                 'checklist_id' => $firstResponse?->checklist_id,
-                'checklist' => $firstResponse?->checklist?->checklist_name,
+                'checklist_name' => $firstResponse?->checklist?->checklist_name,
                 'unit_id' => $firstResponse?->unit_id,
                 'unit' => $firstResponse?->unit?->name,
                 'user_id' => $firstResponse?->user_id,
