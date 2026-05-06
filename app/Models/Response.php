@@ -17,8 +17,8 @@ class Response extends Model
         'response' => 'json',
     ];
 
-    public function section() {
-        return $this->belongsTo(Section::class);
+    public function checklist() {
+        return $this->belongsTo(Checklist::class);
     }
 
     public function unit() {
