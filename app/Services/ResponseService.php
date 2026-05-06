@@ -29,11 +29,15 @@ class ResponseService
         $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
             $firstResponse = $batchResponses->first();
             $startAt = $firstResponse?->start_at;
+            $countSubItems = $firstResponse?->checklist?->countSubItems();
+            $countResponses = $batchResponses->count();
+            $progress = $countSubItems > 0 ? ($countResponses / $countSubItems) * 100 : 0;
 
             return [
                 'batch_no' => (int) $batchNo,
-                'section_id' => $firstResponse?->section_id,
-                'section' => $firstResponse?->section?->name,
+                'progress' => (int) $progress . '%' ,
+                'checklist_id' => $firstResponse?->checklist_id,
+                'checklist' => $firstResponse?->checklist?->checklist_name,
                 'unit_id' => $firstResponse?->unit_id,
                 'unit' => $firstResponse?->unit?->name,
                 'user_id' => $firstResponse?->user_id,
@@ -93,7 +97,7 @@ class ResponseService
             }
 
             $response = $this->response->create([
-                'section_id' => $data['section_id'] ?? null,
+                'checklist_id' => $data['checklist_id'] ?? null,
                 'unit_id' => $data['unit_id'] ?? null,
                 'user_id' => $data['user_id'] ?? null,
                 'approver_id' => $data['approver_id'] ?? null,

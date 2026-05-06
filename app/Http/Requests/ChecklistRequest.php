@@ -23,8 +23,9 @@ class ChecklistRequest extends FormRequest
     {
         return [
             'section_id' => 'required|exists:sections,id',
-            'checklist_name' => 'required|string|unique:checklists,checklist_name',
-            'items' => 'required'
+            'checklist_name' => 'required|string|unique:checklists,checklist_name,' . $this->route('checklist'),
+            'items' => 'required',
+            'unit_ids' => 'nullable|array|exists:units,id',
         ];
     }
 
@@ -32,6 +33,7 @@ class ChecklistRequest extends FormRequest
     {
         return [
             'section_id' => 'section',
+            'unit_ids' => 'units',
         ];
     }
 }

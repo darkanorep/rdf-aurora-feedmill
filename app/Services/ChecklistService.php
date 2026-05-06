@@ -9,7 +9,7 @@ class ChecklistService
 {
     public function getChecklists()
     {
-        return Checklist::with(['section'])->useFilters()->dynamicPaginate();
+        return Checklist::with(['section', 'units'])->useFilters()->dynamicPaginate();
     }
 
     public function createChecklist(array $data)
@@ -19,7 +19,7 @@ class ChecklistService
 
     public function getChecklistById($id)
     {
-        return Checklist::with(['section'])->find($id);
+        return Checklist::with(['section', 'units'])->find($id);
     }
 
     public function updateChecklist(Checklist $checklist, array $data)
