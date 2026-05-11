@@ -59,6 +59,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::resource('questionnaires', ChecklistController::class)->only(['show']);
+    Route::get('responses/summary', [ResponseController::class, 'summaryReportByBatchNo']);
     Route::resource('responses', ResponseController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);

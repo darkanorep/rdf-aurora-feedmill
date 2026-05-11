@@ -15,4 +15,8 @@ class Unit extends Model
     protected $guarded = [];
     protected string $default_filters = UnitFilter::class;
 
+    public function checkList() {
+        return $this->hasManyJson(Checklist::class, 'unit_ids')->withTrashed();
+    }
+
 }
