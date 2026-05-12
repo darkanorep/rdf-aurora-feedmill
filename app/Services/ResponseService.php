@@ -27,31 +27,49 @@ class ResponseService
         $responses = $this->response->useFilters()->get();
 
         $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
-            return $this->formatBatchResponse($batchResponses, $batchNo);
+            $firstResponse = $batchResponses->first();
+            $startAt = $firstResponse?->start_at;
+            $countSubItems = $firstResponse?->checklist?->countSubItems();
+            $countResponses = $batchResponses->count();
+            $progress = $countSubItems > 0 ? ($countResponses / $countSubItems) * 100 : 0;
+
+            return [
+                'batch_no' => (int) $batchNo,
+                'progress' => (int) $progress . '%' ,
+                'checklist_id' => $firstResponse?->checklist_id,
+                'checklist_name' => $firstResponse?->checklist?->checklist_name,
+                'unit_id' => $firstResponse?->unit_id,
+                'unit' => $firstResponse?->unit?->name,
+                'user_id' => $firstResponse?->user_id,
+                'user' => $firstResponse?->user?->getFullNameAttribute(),
+                'approver_id' => $firstResponse?->approver_id,
+                'approver' => $firstResponse?->approver?->getFullNameAttribute(),
+                'is_completed' => $firstResponse?->is_completed,
+                'start_at' => $startAt,
+                'end_at' => $firstResponse?->end_at,
+                'week' => $startAt ? min(Carbon::parse($startAt)->weekOfMonth, 4) : null,
+                'responses' => $batchResponses->map(function ($response) {
+                    return [
+                        'id' => $response->id,
+                        'response' => $response->response,
+                        'images' => $response->images->pluck('url'),
+                    ];
+                })->values(),
+            ];
         })->values();
 
         $batchesByUnit = $batches->groupBy('unit_id');
 
-        return Unit::query()->with(['checkList'])->get()->mapWithKeys(function ($unit) use ($batchesByUnit) {
+        return Unit::query()->get()->mapWithKeys(function ($unit) use ($batchesByUnit) {
             $unitBatches = $batchesByUnit->get($unit->id, collect());
             $batchesByWeek = $unitBatches->groupBy('week');
-            $checklists = $unit->checkList;
 
             return [
-                'Unit: ' . $unit->name => [
-                    'unit_id' => $unit->id,
-                    'checklists' => $checklists->map(function ($checklist) {
-                        return [
-                            'id' => $checklist->id,
-                            'checklist_name' => $checklist->checklist_name
-                        ];
-                    })->values(),
-                    'weeks' => collect(range(1, 4))->mapWithKeys(function ($week) use ($batchesByWeek) {
-                        return [
-                            'Week ' . $week => $batchesByWeek->get($week, collect())->values()->all(),
-                        ];
-                    })->all(),
-                ],
+                'Unit: ' . $unit->name => collect(range(1, 4))->mapWithKeys(function ($week) use ($batchesByWeek) {
+                    return [
+                        'Week ' . $week => $batchesByWeek->get($week, collect())->values()->all(),
+                    ];
+                })->all(),
             ];
         });
     }
@@ -83,9 +101,6 @@ class ResponseService
                 'unit_id' => $data['unit_id'] ?? null,
                 'user_id' => $data['user_id'] ?? null,
                 'approver_id' => $data['approver_id'] ?? null,
-                'good_points' => $data['good_points'] ?? null,
-                'temporal_audit' => $data['temporal_audit'] ?? null,
-                'remarks' => $data['remarks'] ?? null,
                 'batch_no' => $batchNo,
                 'response' => $responseData,
                 'start_at' => Carbon::now(),
@@ -115,53 +130,6 @@ class ResponseService
                 ]);
             }
         }
-    }
-    public function generateSummaryReportByBatchNo(int $batchNo) {
-        $response = $this->response->where('batch_no', $batchNo)->get();
-
-        return $response->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
-            return $this->formatBatchResponse($batchResponses, $batchNo);
-        })->values()->first();
-    }
-    private function formatBatchResponse($batchResponses, $batchNo) {
-        $firstResponse = $batchResponses->first();
-        $startAt = $firstResponse?->start_at;
-        $countSubItems = $firstResponse?->checklist?->countSubItems();
-        $countResponses = $batchResponses->count();
-        $progress = $countSubItems > 0 ? ($countResponses / $countSubItems) * 100 : 0;
-
-        return [
-            'batch_no' => (int) $batchNo,
-            'progress' => $progress . '%',
-            'status' => match(true) {
-                $progress == 0 => 'Pending',
-                $progress > 0 && $progress < 100 && !$firstResponse?->is_completed => 'On Going',
-                $progress == 100 && $firstResponse?->is_completed => 'For Approval',
-                default => 'Unknown',
-            },
-            'checklist_id' => $firstResponse?->checklist_id,
-            'checklist_name' => $firstResponse?->checklist?->checklist_name,
-            'unit_id' => $firstResponse?->unit_id,
-            'unit' => $firstResponse?->unit?->name,
-            'user_id' => $firstResponse?->user_id,
-            'user' => $firstResponse?->user?->getFullNameAttribute(),
-            'approver_id' => $firstResponse?->approver_id,
-            'approver' => $firstResponse?->approver?->getFullNameAttribute(),
-            'is_completed' => $firstResponse?->is_completed,
-            'start_at' => $startAt,
-            'end_at' => $firstResponse?->end_at,
-            'week' => $startAt ? min(Carbon::parse($startAt)->weekOfMonth, 4) : null,
-            'responses' => $batchResponses->map(function ($response) {
-                return [
-                    'id' => $response->id,
-                    'response' => $response->response,
-                    'images' => $response->images->pluck('url'),
-                ];
-            })->values(),
-            'good_points' => $firstResponse?->good_points,
-            'temporal_audit' => $firstResponse?->temporal_audit,
-            'remarks' => $firstResponse?->remarks,
-        ];
     }
     private function generateBatchNo()
     {
