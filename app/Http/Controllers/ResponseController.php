@@ -30,4 +30,10 @@ class ResponseController extends Controller
             'data' => $response,
         ], 201, [], JSON_UNESCAPED_SLASHES);
     }
+
+    public function summaryReportByBatchNo(Request $request) {
+        $batchNo = $request->input('batch_no');
+
+        return $this->responseService->generateSummaryReportByBatchNo($batchNo);
+    }
 }
