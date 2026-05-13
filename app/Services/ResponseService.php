@@ -88,7 +88,7 @@ class ResponseService
                 'good_points' => $data['good_points'] ?? null,
                 'remarks' => $data['remarks'] ?? null,
                 'temporal_audit' => $data['temporal_audit'] ?? null,
-                'start_at' => Carbon::now(),
+                'start_at' => $data['start_at'] ?? Carbon::now(),
                 'is_completed' => $data['is_completed'] ?? null,
                 'end_at' => $data['is_completed'] ? Carbon::now() : null,
             ]);
