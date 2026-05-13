@@ -18,6 +18,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\InspectionAreaPestController;
 use App\Http\Controllers\InspectionAreaInfestationLevelController;
 use App\Http\Controllers\ScoreController;
+use App\Http\Controllers\ApprovalController;
 
 // Route::get('/user', function (Request $request) {
 //     return $request->user();
@@ -61,6 +62,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::resource('questionnaires', ChecklistController::class)->only(['show']);
     Route::get('responses/summary', [ResponseController::class, 'summaryReportByBatchNo']);
     Route::resource('responses', ResponseController::class);
+
+    Route::put('approvals/approve', [ApprovalController::class, 'approve']);
+    Route::resource('approvals', ApprovalController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
 });
