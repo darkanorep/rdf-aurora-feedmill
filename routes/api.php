@@ -63,7 +63,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('responses/summary', [ResponseController::class, 'summaryReportByBatchNo']);
     Route::resource('responses', ResponseController::class);
 
-    Route::put('approvals/approve', [ApprovalController::class, 'approve']);
+    Route::post('approvals/approve', [ApprovalController::class, 'approve']);
     Route::resource('approvals', ApprovalController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);

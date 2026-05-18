@@ -35,8 +35,17 @@ class ApprovalService
         // Reuse ResponseService formatting logic
         return $this->responseService->formatResponses($responses);
     }
-    public function approveResponses($batchNo): void
-    {
-        Response::where('batch_no', $batchNo)->update(['is_approved' => true]);
+    public function approveResponses(array $data) {
+        $baseResponseData = $this->responseService->buildBaseResponseData($data);
+
+        $this->responseService->processResponseBatch(
+            $data['approve'] ?? [],
+            $data['approve_image'] ?? [],
+            'approve',
+            $baseResponseData,
+            $this->responseService->getImageKit()
+        );
+
+        Response::where('batch_no', $data['batch_no'])->update(['is_approved' => true]);
     }
 }
