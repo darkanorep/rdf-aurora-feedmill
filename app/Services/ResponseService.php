@@ -156,6 +156,7 @@ class ResponseService
             'approver_id' => $firstResponse?->approver_id,
             'approver' => $firstResponse?->approver?->getFullNameAttribute(),
             'is_completed' => $firstResponse?->is_completed,
+            'is_approved' => $firstResponse?->is_approved,
             'good_points' => $firstResponse?->good_points,
             'remarks' => $firstResponse?->remarks,
             'temporal_audit' => $firstResponse?->temporal_audit,
@@ -169,11 +170,7 @@ class ResponseService
                     'images' => $response->images->pluck('url'),
                 ];
             })->values(),
-            'status' => match(true) {
-                $firstResponse?->is_approved => 'Done',
-                $progress == 100 && $firstResponse?->is_completed => 'For Acknowledgement',
-                default => 'In Progress',
-            },
+            'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
         ];
     }
     private function computeHierarchicalScore($firstResponse, $batchResponses) {
