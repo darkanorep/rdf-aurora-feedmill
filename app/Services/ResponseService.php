@@ -63,12 +63,6 @@ class ResponseService
     }
     public function storeResponse(array $data) {
         $batchNo = $this->generateBatchNo();
-//        $imageKit = new ImageKit(
-//            config('app.imagekit_public_key'),
-//            config('app.imagekit_private_key'),
-//            config('app.imagekit_url_endpoint')
-//        );
-
         if ($data['batch_no']) {
             DB::transaction(function () use ($data) {
                 $responseIds = $this->response->where('batch_no', $data['batch_no'])->pluck('id');
@@ -85,15 +79,6 @@ class ResponseService
             $data['response'] ?? [],
             $data['image'] ?? $data['images'] ?? [],
             'response',
-            $baseResponseData,
-            $this->imageKit
-        );
-
-        // Process evaluations
-        $this->processResponseBatch(
-            $data['evaluate'] ?? [],
-            $data['evaluate_image'] ?? [],
-            'evaluate',
             $baseResponseData,
             $this->imageKit
         );
@@ -200,30 +185,23 @@ class ResponseService
                     'images' => $response->images->pluck('url'),
                 ];
             })->values(),
-            'evaluate' => (function() use ($batchResponses) {
-                $item = $batchResponses->map(fn($r) => [
-                    'evaluate' => $r->evaluate,
-                    'images' => $r->images->pluck('url'),
-                ])->filter(fn($i) => $i['evaluate'] !== null)->first();
-
-                return $item ? [
-                    'name' => $item['evaluate']['name'] ?? null,
-                    'evaluate_image' => $item['images']->first(),
-                ] : null;
-            })(),
-            'approve' => (function() use ($batchResponses) {
-                $item = $batchResponses->map(fn($r) => [
-                    'approve' => $r->approve,
-                    'images' => $r->images->pluck('url'),
-                ])->filter(fn($i) => $i['approve'] !== null)->first();
-
-                return $item ? [
-                    'name' => $item['approve']['name'] ?? null,
-                    'approve_image' => $item['images']->first(),
-                ] : null;
-            })(),
+            'approve' => $this->formatFieldData($batchResponses, 'approve', 'approve'),
+            'assess' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
+            'evaluate' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
             'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
         ];
+    }
+    private function formatFieldData($batchResponses, string $fieldName, string $imageFieldName): ?array
+    {
+        $item = $batchResponses->map(fn($r) => [
+            $fieldName => $r->{$fieldName},
+            'images' => $r->images->pluck('url'),
+        ])->filter(fn($i) => $i[$fieldName] !== null)->first();
+
+        return $item ? [
+            'name' => $item[$fieldName]['name'] ?? null,
+            "{$imageFieldName}_image" => $item['images']->first(),
+        ] : null;
     }
     private function computeHierarchicalScore($firstResponse, $batchResponses) {
         $checklist = $firstResponse?->checklist;
@@ -408,6 +386,7 @@ class ResponseService
             'user_id' => auth()->user()->id ?? $data['user_id'] ?? null,
             'approver_id' => $data['approver_id'] ?? null,
             'evaluator_id' => $data['evaluator_id'] ?? null,
+            'assessor_id' => $data['assessor_id'] ?? null,
             'batch_no' => $data['batch_no'] ?? $batchNo,
             'good_points' => $data['good_points'] ?? null,
             'remarks' => $data['remarks'] ?? null,
@@ -416,6 +395,29 @@ class ResponseService
             'is_completed' => $data['is_completed'] ?? null,
             'end_at' => isset($data['is_completed']) && $data['is_completed'] ? Carbon::now() : null,
         ];
+    }
+    public function evaluate($data) {
+        $baseResponseData = $this->buildBaseResponseData($data, $data['batch_no']);
+
+        // Process evaluations
+        $this->processResponseBatch(
+            $data['evaluate'] ?? [],
+            $data['evaluate_image'] ?? [],
+            'evaluate',
+            $baseResponseData,
+            $this->imageKit
+        );
+    }
+    public function assess($data) {
+        $baseResponseData = $this->buildBaseResponseData($data, $data['batch_no']);
+
+        $this->processResponseBatch(
+            $data['assess'] ?? [],
+            $data['assess_image'] ?? [],
+            'assess',
+            $baseResponseData,
+            $this->imageKit
+        );
     }
     public function getImageKit()
     {

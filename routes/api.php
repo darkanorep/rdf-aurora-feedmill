@@ -61,6 +61,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::resource('questionnaires', ChecklistController::class)->only(['show']);
     Route::get('responses/summary', [ResponseController::class, 'summaryReportByBatchNo']);
+    Route::post('responses/evaluate', [ResponseController::class, 'evaluateResponse']);
+    Route::post('responses/assess', [ResponseController::class, 'assessResponse']);
     Route::resource('responses', ResponseController::class);
 
     Route::post('approvals/approve', [ApprovalController::class, 'approve']);

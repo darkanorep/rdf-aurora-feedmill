@@ -17,6 +17,7 @@ class Response extends Model
         'response' => 'json',
         'evaluate' => 'json',
         'approve' => 'json',
+        'assess' => 'json',
     ];
 
     public function checklist() {
