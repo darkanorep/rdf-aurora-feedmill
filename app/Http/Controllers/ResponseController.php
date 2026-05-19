@@ -21,7 +21,7 @@ class ResponseController extends Controller
     public function store(Request $request)
     {
         $data = $request->all();
-        $data['user_id'] = $request->user()->id;
+//        $data['user_id'] = $request->user()->id;
 
         $response = $this->responseService->storeResponse($data);
 
@@ -35,5 +35,21 @@ class ResponseController extends Controller
         $batchNo = $request->input('batch_no');
 
         return $this->responseService->generateSummaryReportByBatchNo($batchNo);
+    }
+    public function evaluateResponse(Request $request) {
+        $data = $request->all();
+
+        $this->responseService->evaluate($data);
+
+        return response()->json([
+            'message' => 'Response evaluate successfully.',
+        ], 200);
+    }
+    public function assessResponse(Request $request) {
+        $data = $request->all();
+        $this->responseService->assess($data);
+        return response()->json([
+            'message' => 'Response assess successfully.',
+        ], 200);
     }
 }

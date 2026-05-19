@@ -13,15 +13,16 @@ use ImageKit\ImageKit;
 #[AllowDynamicProperties]
 class ResponseService
 {
-    /**
-     * Create a new class instance.
-     */
-
     private Response $response;
-
+    private ImageKit $imageKit;
     public function __construct(Response $response)
     {
         $this->response = $response;
+        $this->imageKit = new ImageKit(
+            config('app.imagekit_public_key'),
+            config('app.imagekit_private_key'),
+            config('app.imagekit_url_endpoint')
+        );
     }
     public function getResponses($request) {
         $responses = $this->response->useFilters()->get();
@@ -60,64 +61,78 @@ class ResponseService
             ],
         ];
     }
-    public function storeResponse(array $data)
-    {
+    public function storeResponse(array $data) {
         $batchNo = $this->generateBatchNo();
-        $responsesData = $data['response'] ?? [];
-        $imagesData = $data['image'] ?? $data['images'] ?? [];
+        if ($data['batch_no']) {
+            DB::transaction(function () use ($data) {
+                $responseIds = $this->response->where('batch_no', $data['batch_no'])->pluck('id');
 
-        $imageKit = new ImageKit(
-            config('app.imagekit_public_key'),
-            config('app.imagekit_private_key'),
-            config('app.imagekit_url_endpoint')
+                Image::whereIn('response_id', $responseIds)->forceDelete();
+                $this->response->where('batch_no', $data['batch_no'])->forceDelete();
+            });
+        }
+
+        $baseResponseData = $this->buildBaseResponseData($data, $batchNo);
+
+        // Process responses
+        $this->processResponseBatch(
+            $data['response'] ?? [],
+            $data['image'] ?? $data['images'] ?? [],
+            'response',
+            $baseResponseData,
+            $this->imageKit
         );
+    }
+    public function processResponseBatch(array $dataItems, array $imageItems, string $fieldName, array $baseData, ImageKit $imageKit)
+    {
+        foreach ($dataItems as $key => $value) {
+            $fieldData = $this->parseData($value);
 
-        foreach ($responsesData as $key => $value) {
-            $responseData = is_string($value) ? json_decode($value, true) : $value;
+            $response = $this->response->create(array_merge($baseData, [
+                $fieldName => $fieldData,
+            ]));
 
-            if (is_string($value) && json_last_error() !== JSON_ERROR_NONE) {
-                $responseData = ['value' => $value];
+            $this->storeImages($imageItems[$key] ?? [], $response->id, $imageKit);
+        }
+    }
+    private function parseData($value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+            return ['value' => $value];
+        }
+
+        return is_array($value) ? $value : ['value' => $value];
+    }
+    private function storeImages($images, int $responseId, ImageKit $imageKit): void
+    {
+        // Ensure $images is always an array
+        $imagesToProcess = !is_array($images) ? [$images] : $images;
+
+        foreach ($imagesToProcess as $image) {
+            if (!$image || !method_exists($image, 'getRealPath')) {
+                continue;
             }
 
-            if (!is_array($responseData)) {
-                $responseData = ['value' => $responseData];
-            }
-
-            $response = $this->response->create([
-                'checklist_id' => $data['checklist_id'] ?? null,
-                'unit_id' => $data['unit_id'] ?? null,
-                'user_id' => $data['user_id'] ?? null,
-                'approver_id' => $data['approver_id'] ?? null,
-                'batch_no' => $batchNo,
-                'response' => $responseData,
-                'good_points' => $data['good_points'] ?? null,
-                'remarks' => $data['remarks'] ?? null,
-                'temporal_audit' => $data['temporal_audit'] ?? null,
-                'start_at' => $data['start_at'] ?? Carbon::now(),
-                'is_completed' => $data['is_completed'] ?? null,
-                'end_at' => $data['is_completed'] ? Carbon::now() : null,
-            ]);
-
-            $images = $imagesData[$key] ?? [];
-            if (!is_array($images)) {
-                $images = [$images];
-            }
-
-            foreach ($images as $image) {
-                if (!$image || !method_exists($image, 'getRealPath')) {
-                    continue;
-                }
-
+            try {
                 $fileName = time() . '_' . uniqid() . '_' . $image->getClientOriginalName();
                 $uploadFile = $imageKit->uploadFile([
                     'file' => fopen($image->getRealPath(), 'r'),
                     'fileName' => $fileName,
                 ]);
 
-                Image::create([
-                    'response_id' => $response->id,
-                    'url' => data_get($uploadFile, 'result.url'),
-                ]);
+                $url = data_get($uploadFile, 'result.url');
+                if ($url) {
+                    Image::create([
+                        'response_id' => $responseId,
+                        'url' => $url,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                \Log::error('ImageKit upload failed: ' . $e->getMessage());
             }
         }
     }
@@ -156,6 +171,7 @@ class ResponseService
             'approver_id' => $firstResponse?->approver_id,
             'approver' => $firstResponse?->approver?->getFullNameAttribute(),
             'is_completed' => $firstResponse?->is_completed,
+            'is_approved' => $firstResponse?->is_approved,
             'good_points' => $firstResponse?->good_points,
             'remarks' => $firstResponse?->remarks,
             'temporal_audit' => $firstResponse?->temporal_audit,
@@ -169,12 +185,23 @@ class ResponseService
                     'images' => $response->images->pluck('url'),
                 ];
             })->values(),
-            'status' => match(true) {
-                $firstResponse?->is_approved => 'Done',
-                $progress == 100 && $firstResponse?->is_completed => 'For Acknowledgement',
-                default => 'In Progress',
-            },
+            'approve' => $this->formatFieldData($batchResponses, 'approve', 'approve'),
+            'assess' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
+            'evaluate' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
+            'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
         ];
+    }
+    private function formatFieldData($batchResponses, string $fieldName, string $imageFieldName): ?array
+    {
+        $item = $batchResponses->map(fn($r) => [
+            $fieldName => $r->{$fieldName},
+            'images' => $r->images->pluck('url'),
+        ])->filter(fn($i) => $i[$fieldName] !== null)->first();
+
+        return $item ? [
+            'name' => $item[$fieldName]['name'] ?? null,
+            "{$imageFieldName}_image" => $item['images']->first(),
+        ] : null;
     }
     private function computeHierarchicalScore($firstResponse, $batchResponses) {
         $checklist = $firstResponse?->checklist;
@@ -294,7 +321,6 @@ class ResponseService
             'breakdown' => $breakdown,
         ];
     }
-
     private function findResponseValue($batchResponses, $categoryIndex, $itemIndex, $subItemIndex) {
         // Get category name from checklist
         $checklist = $batchResponses->first()?->checklist;
@@ -332,7 +358,6 @@ class ResponseService
 
         return 0;
     }
-
     private function ensureArray($data) {
         // Already an array
         if (is_array($data)) {
@@ -352,5 +377,50 @@ class ResponseService
 
         // Fallback
         return is_object($data) ? (array) $data : [];
+    }
+    public function buildBaseResponseData(array $data, ?string $batchNo = null): array
+    {
+        return [
+            'checklist_id' => $data['checklist_id'] ?? null,
+            'unit_id' => $data['unit_id'] ?? null,
+            'user_id' => auth()->user()->id ?? $data['user_id'] ?? null,
+            'approver_id' => $data['approver_id'] ?? null,
+            'evaluator_id' => $data['evaluator_id'] ?? null,
+            'assessor_id' => $data['assessor_id'] ?? null,
+            'batch_no' => $data['batch_no'] ?? $batchNo,
+            'good_points' => $data['good_points'] ?? null,
+            'remarks' => $data['remarks'] ?? null,
+            'temporal_audit' => $data['temporal_audit'] ?? null,
+            'start_at' => $data['start_at'] ?? Carbon::now(),
+            'is_completed' => $data['is_completed'] ?? null,
+            'end_at' => isset($data['is_completed']) && $data['is_completed'] ? Carbon::now() : null,
+        ];
+    }
+    public function evaluate($data) {
+        $baseResponseData = $this->buildBaseResponseData($data, $data['batch_no']);
+
+        // Process evaluations
+        $this->processResponseBatch(
+            $data['evaluate'] ?? [],
+            $data['evaluate_image'] ?? [],
+            'evaluate',
+            $baseResponseData,
+            $this->imageKit
+        );
+    }
+    public function assess($data) {
+        $baseResponseData = $this->buildBaseResponseData($data, $data['batch_no']);
+
+        $this->processResponseBatch(
+            $data['assess'] ?? [],
+            $data['assess_image'] ?? [],
+            'assess',
+            $baseResponseData,
+            $this->imageKit
+        );
+    }
+    public function getImageKit()
+    {
+        return $this->imageKit;
     }
 }

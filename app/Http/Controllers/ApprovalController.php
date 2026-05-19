@@ -17,7 +17,7 @@ class ApprovalController extends Controller
     }
 
     public function approve(Request $request) {
-        $this->approvalService->approveResponses($request->input('batch_no'));
+        $this->approvalService->approveResponses($request->all());
         return response()->json([
             'message' => 'Approved successfully.',
         ], 200);
