@@ -63,10 +63,10 @@ class ResponseService
     }
     public function storeResponse(array $data) {
         $batchNo = $this->generateBatchNo();
+
         if ($data['batch_no']) {
             DB::transaction(function () use ($data) {
                 $responseIds = $this->response->where('batch_no', $data['batch_no'])->pluck('id');
-
                 Image::whereIn('response_id', $responseIds)->forceDelete();
                 $this->response->where('batch_no', $data['batch_no'])->forceDelete();
             });
@@ -82,6 +82,43 @@ class ResponseService
             $baseResponseData,
             $this->imageKit
         );
+
+        // Check if start_at is in 3rd week, duplicate for 4th week as soft deleted
+        if ($this->isThirdWeek($data['start_at'] ?? null)) {
+            $fourthWeekData = $data;
+            $fourthWeekData['start_at'] = Carbon::parse($data['start_at'])->addWeeks(1);
+            $fourthWeekData['end_at'] = $fourthWeekData['start_at']; // Set end_at same as start_at
+
+            $newBatchNo = $this->generateBatchNo();
+            $baseResponseData4thWeek = $this->buildBaseResponseData($fourthWeekData, $newBatchNo);
+
+            DB::transaction(function () use ($data, $baseResponseData4thWeek) {
+                $this->processResponseBatch(
+                    $data['response'] ?? [],
+                    $data['image'] ?? $data['images'] ?? [],
+                    'response',
+                    $baseResponseData4thWeek,
+                    $this->imageKit
+                );
+
+                // Soft delete the 4th week responses
+                $this->response->where('batch_no', $baseResponseData4thWeek['batch_no'])
+                    ->whereMonth('start_at', Carbon::parse($baseResponseData4thWeek['start_at'])->month)
+                    ->whereDay('start_at', '>=', 22)
+                    ->delete();
+            });
+        }
+    }
+    private function isThirdWeek($startAt): bool
+    {
+        if (!$startAt) {
+            return false;
+        }
+
+        $date = Carbon::parse($startAt);
+        $weekOfMonth = (int) ceil($date->day / 7);
+
+        return $weekOfMonth === 3;
     }
     public function processResponseBatch(array $dataItems, array $imageItems, string $fieldName, array $baseData, ImageKit $imageKit)
     {
@@ -422,5 +459,21 @@ class ResponseService
     public function getImageKit()
     {
         return $this->imageKit;
+    }
+    public function mergeResponse($data) {
+        $month = $data['month'] ?? null;
+        $year = $data['year'] ?? null;
+        $startAt = $data['start_at'] ?? Carbon::now();
+        $endAt = $data['end_at'] ?? $startAt;
+
+        $this->response
+            ->withTrashed()
+            ->whereYear('start_at', $year)
+            ->whereMonth('start_at', $month)
+            ->update([
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+                'deleted_at' => null, // Restore by clearing deleted_at
+            ]);
     }
 }

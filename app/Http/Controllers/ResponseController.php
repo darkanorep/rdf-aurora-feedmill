@@ -52,4 +52,13 @@ class ResponseController extends Controller
             'message' => 'Response assess successfully.',
         ], 200);
     }
+    public function mergeResponse(Request $request) {
+        $data = $request->all();
+
+        $this->responseService->mergeResponse($data);
+
+        return response()->json([
+            'message' => 'Response merge successfully.',
+        ]);
+    }
 }
