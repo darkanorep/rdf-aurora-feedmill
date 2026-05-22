@@ -222,9 +222,9 @@ class ResponseService
                     'images' => $response->images->pluck('url'),
                 ];
             })->values(),
-            'approve' => $this->formatFieldData($batchResponses, 'approve', 'approve'),
-            'assess' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
-            'evaluate' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
+            'signatory_1' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
+            'signatory_2' => $this->formatFieldData($batchResponses, 'approve', 'approve'),
+            'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
             'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
         ];
     }
