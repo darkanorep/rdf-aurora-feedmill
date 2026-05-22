@@ -12,6 +12,10 @@ class UserFilter extends QueryFilters
 
     protected array $columnSearch = ['first_name', 'last_name', 'employee_id', 'username'];
 
+    protected array $relationSearch = [
+        'role' => ['name'],
+    ];
+
     public function status($status)
     {
         return $this->builder->withTrashed()->when(
