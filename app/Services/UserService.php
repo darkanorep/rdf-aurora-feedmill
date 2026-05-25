@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 
@@ -28,24 +29,44 @@ class UserService
         if (isset($data['password'])) {
             $data['password'] = Hash::make($data['password']);
         }
-        
+
         $user->update($data);
         return $user;
     }
 
     public function deleteUser($id) {
         $user = User::withTrashed()->find($id);
-    
+
         if (!$user) {
             return null;
         }
-    
+
         if ($user->trashed()) {
             $user->restore();
         } else {
             $user->delete();
         }
-    
+
         return $user;
+    }
+
+    public function getUsersByRole(string $role, string $singular)
+    {
+        request()->merge([
+            'search' => $role,
+            'pagination' => 'none',
+        ]);
+
+        $users = $this->getUsers(request());
+
+        if ($users->isEmpty()) {
+            return response()->json(['message' => "No {$singular}s found."], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$singular}s fetched successfully",
+            'data' => UserResource::collection($users)->map(fn($item) => $item->only(['id', 'full_name']))
+        ]);
     }
 }

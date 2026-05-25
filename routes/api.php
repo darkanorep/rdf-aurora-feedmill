@@ -40,6 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::resource('units', UnitController::class);
         Route::resource('scores', ScoreController::class);
         Route::resource('wastages', WastageController::class);
+        Route::delete('responses/truncate', [ResponseController::class, 'truncateResponse']);
 
         // ❌ COBS QUESTIONNAIRES CONSOLIDATOR
         //Route::resource('merge-forms', MergeFormController::class);
@@ -57,6 +58,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::resource('sheets', InspectionAreaPestController::class);
         //BIRDS
         Route::resource('surveys', InspectionAreaInfestationLevelController::class);
+    });
+
+    Route::group(['prefix' => 'dropdown'], function () {
+        Route::get('evaluators', [UserController::class, 'evaluators']);
+        Route::get('approvers', [UserController::class, 'approvers']);
+        Route::get('assessors', [UserController::class, 'assessors']);
     });
 
     Route::resource('questionnaires', ChecklistController::class)->only(['show']);

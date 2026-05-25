@@ -476,4 +476,12 @@ class ResponseService
                 'deleted_at' => null, // Restore by clearing deleted_at
             ]);
     }
+    public function truncateResponse() {
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+
+        DB::table('images')->truncate();
+        DB::table('responses')->truncate();
+
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+    }
 }
