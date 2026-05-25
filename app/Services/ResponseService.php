@@ -467,7 +467,7 @@ class ResponseService
         $endAt = $data['end_at'] ?? $startAt;
 
         $this->response
-            ->withTrashed()
+            ->onlyTrashed() // Only soft-deleted records
             ->whereYear('start_at', $year)
             ->whereMonth('start_at', $month)
             ->update([
