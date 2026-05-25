@@ -61,4 +61,12 @@ class ResponseController extends Controller
             'message' => 'Response merge successfully.',
         ]);
     }
+
+    public function truncateResponse() {
+        $this->responseService->truncateResponse();
+
+        return response()->json([
+            'message' => 'Response truncate successfully.',
+        ]);
+    }
 }
