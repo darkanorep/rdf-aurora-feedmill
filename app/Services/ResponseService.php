@@ -208,7 +208,9 @@ class ResponseService
             'approver_id' => $firstResponse?->approver_id,
             'approver' => $firstResponse?->approver?->getFullNameAttribute(),
             'is_completed' => $firstResponse?->is_completed,
+            'is_evaluated' => $firstResponse?->is_evaluated,
             'is_approved' => $firstResponse?->is_approved,
+            'is_assessed' => $firstResponse?->is_assessed,
             'good_points' => $firstResponse?->good_points,
             'remarks' => $firstResponse?->remarks,
             'temporal_audit' => $firstResponse?->temporal_audit,
@@ -444,6 +446,8 @@ class ResponseService
             $baseResponseData,
             $this->imageKit
         );
+
+        $this->response->newQuery()->where('batch_no', $data['batch_no'])->update(['is_evaluated' => true]);
     }
     public function assess($data) {
         $baseResponseData = $this->buildBaseResponseData($data, $data['batch_no']);

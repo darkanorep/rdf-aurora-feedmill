@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AssessController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
@@ -73,8 +74,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('responses/merge', [ResponseController::class, 'mergeResponse']);
     Route::resource('responses', ResponseController::class);
 
+    //APPROVAL
     Route::post('approvals/approve', [ApprovalController::class, 'approve']);
     Route::resource('approvals', ApprovalController::class);
+
+    //FINAL APPROVAL
+    Route::post('assess/assess', [AssessController::class, 'asses']);
+    Route::resource('assess', AssessController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
 });
