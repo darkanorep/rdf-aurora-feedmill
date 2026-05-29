@@ -3,12 +3,10 @@
 namespace App\Services;
 
 use App\Models\Response;
-use App\Models\Unit;
 
-class ApprovalService
+class AssessService
 {
     private ResponseService $responseService;
-
     public function __construct(ResponseService $responseService)
     {
         $this->responseService = $responseService;
@@ -23,8 +21,11 @@ class ApprovalService
 
         // Apply status-based filter
         match($status) {
-            'pending' => $query->whereNull('is_approved'),
-            default => $query->where('is_approved', true),
+            'pending' => $query->where([
+                'is_approved' => false,
+                'is_assessed' => true,
+            ]),
+            default => $query->where('is_assessed', true),
         };
 
         // Apply other filters from request and retrieve results
@@ -33,17 +34,18 @@ class ApprovalService
         // Reuse ResponseService formatting logic
         return $this->responseService->formatResponses($responses);
     }
-    public function approveResponses(array $data) {
+
+    public function assessResponses(array $data) {
         $baseResponseData = $this->responseService->buildBaseResponseData($data);
 
         $this->responseService->processResponseBatch(
-            $data['approve'] ?? [],
-            $data['approve_image'] ?? [],
-            'approve',
+            $data['assess'] ?? [],
+            $data['assess_image'] ?? [],
+            'assess',
             $baseResponseData,
             $this->responseService->getImageKit()
         );
 
-        Response::where('batch_no', $data['batch_no'])->update(['is_approved' => true]);
+        Response::where('batch_no', $data['batch_no'])->update(['is_assessed' => true]);
     }
 }
