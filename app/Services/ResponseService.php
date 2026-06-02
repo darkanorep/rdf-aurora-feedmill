@@ -447,7 +447,10 @@ class ResponseService
             $this->imageKit
         );
 
-        $this->response->newQuery()->where('batch_no', $data['batch_no'])->update(['is_evaluated' => true]);
+        $this->response->newQuery()->where('batch_no', $data['batch_no'])->update([
+            'is_evaluated' => true,
+            'approver_id' => $data['approver_id'] ?? null,
+        ]);
     }
     public function assess($data) {
         $baseResponseData = $this->buildBaseResponseData($data, $data['batch_no']);

@@ -17,13 +17,12 @@ class AssessService
         $status = $request->input("status");
 
         // Query the Response model directly with appropriate filters
-        $query = Response::where('approver_id', auth()->id())->where('is_completed', true);
+        $query = Response::where('assessor_id', auth()->id())->where('is_completed', true);
 
         // Apply status-based filter
         match($status) {
             'pending' => $query->where([
-                'is_approved' => false,
-                'is_assessed' => true,
+                'is_approved' => true
             ]),
             default => $query->where('is_assessed', true),
         };
