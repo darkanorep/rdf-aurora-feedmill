@@ -44,6 +44,9 @@ class ApprovalService
             $this->responseService->getImageKit()
         );
 
-        Response::where('batch_no', $data['batch_no'])->update(['is_approved' => true]);
+        Response::where('batch_no', $data['batch_no'])->update([
+            'is_approved' => true,
+            'assessor_id' => $data['assessor_id'] ?? null,
+        ]);
     }
 }
