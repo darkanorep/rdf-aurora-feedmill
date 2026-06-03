@@ -21,7 +21,6 @@ class ResponseController extends Controller
     public function store(Request $request)
     {
         $data = $request->all();
-//        $data['user_id'] = $request->user()->id;
 
         $response = $this->responseService->storeResponse($data);
 

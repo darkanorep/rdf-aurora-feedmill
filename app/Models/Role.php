@@ -12,11 +12,12 @@ class Role extends Model
 {
     use SoftDeletes, Filterable, HasJsonRelationships;
     const ADMIN = 'Admin';
+    const APPROVER = 'Approver';
+    const ASSESSOR = 'Assessor';
 
     protected $default_filters = RoleFilter::class;
 
     protected $guarded = [];
-
 
     protected $casts = [
         'permission_id' => 'json',

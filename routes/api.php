@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AcknowledgementSettingController;
 use App\Http\Controllers\AssessController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChecklistController;
@@ -41,6 +42,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::resource('units', UnitController::class);
         Route::resource('scores', ScoreController::class);
         Route::resource('wastages', WastageController::class);
+        Route::resource('acknowledgement-settings', AcknowledgementSettingController::class);
         Route::delete('responses/truncate', [ResponseController::class, 'truncateResponse']);
 
         // ❌ COBS QUESTIONNAIRES CONSOLIDATOR
