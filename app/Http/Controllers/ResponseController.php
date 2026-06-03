@@ -21,7 +21,6 @@ class ResponseController extends Controller
     public function store(Request $request)
     {
         $data = $request->all();
-//        $data['user_id'] = $request->user()->id;
 
         $response = $this->responseService->storeResponse($data);
 
@@ -61,7 +60,6 @@ class ResponseController extends Controller
             'message' => 'Response merge successfully.',
         ]);
     }
-
     public function truncateResponse() {
         $this->responseService->truncateResponse();
 

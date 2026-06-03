@@ -68,4 +68,9 @@ class User extends Authenticatable
 
         return $fullName;
     }
+
+    public function acknowledgement()
+    {
+        return $this->hasOne(AcknowledgementSetting::class);
+    }
 }
