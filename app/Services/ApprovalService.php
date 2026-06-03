@@ -46,7 +46,7 @@ class ApprovalService
 
         Response::where('batch_no', $data['batch_no'])->update([
             'is_approved' => true,
-            'assessor_id' => $data['assessor_id'] ?? null,
+//            'assessor_id' => $data['assessor_id'] ?? null,
         ]);
     }
 }

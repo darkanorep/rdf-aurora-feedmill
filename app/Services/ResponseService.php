@@ -6,8 +6,10 @@ use AllowDynamicProperties;
 use App\Models\Image;
 use App\Models\Response;
 use App\Models\Unit;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use ImageKit\ImageKit;
 
 #[AllowDynamicProperties]
@@ -436,6 +438,19 @@ class ResponseService
         ];
     }
     public function evaluate($data) {
+
+        $evaluator = User::whereId($data['evaluator_id'])->with([
+            'acknowledgement' => fn ($item) => $item->select(['user_id', 'hierarchy']),
+        ])->first();
+
+        // Policy check
+        Gate::authorize('acknowledge', $evaluator);
+
+        $hierarchy = $evaluator->acknowledgement->hierarchy ?? [];
+
+        $approver_id = $hierarchy[0] ?? null;
+        $assessor_id = $hierarchy[1] ?? null;
+
         $baseResponseData = $this->buildBaseResponseData($data, $data['batch_no']);
 
         // Process evaluations
@@ -449,7 +464,9 @@ class ResponseService
 
         $this->response->newQuery()->where('batch_no', $data['batch_no'])->update([
             'is_evaluated' => true,
-            'approver_id' => $data['approver_id'] ?? null,
+            'evaluator_id' => $evaluator->id,
+            'approver_id' => $approver_id,
+            'assessor_id' => $assessor_id,
         ]);
     }
     public function assess($data) {

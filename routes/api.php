@@ -75,6 +75,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('responses/assess', [ResponseController::class, 'assessResponse']);
     Route::post('responses/merge', [ResponseController::class, 'mergeResponse']);
     Route::resource('responses', ResponseController::class);
+//        ->middleware('can:acknowledgement');
 
     //APPROVAL
     Route::post('approvals/approve', [ApprovalController::class, 'approve']);

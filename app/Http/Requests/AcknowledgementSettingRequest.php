@@ -21,7 +21,7 @@ class AcknowledgementSettingRequest extends FormRequest
     {
         return [
             'name' => 'required|string',
-            'user_id' => 'required|integer|exists:users,id',
+            'user_id' => 'required|integer|exists:users,id|unique:acknowledgement_settings,user_id,' . $this->route('id'),
             'hierarchy' => 'required|array',
             'hierarchy.*' => [
                 'required',

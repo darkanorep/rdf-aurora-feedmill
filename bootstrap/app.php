@@ -17,6 +17,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth' => Authenticate::class,
         ]);
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
-        //
+    ->withExceptions(function (Exceptions $exceptions) {
+        $exceptions->render(function (\Illuminate\Auth\Access\AuthorizationException $e, $request) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => $e->getMessage()
+                ], 403);
+            }
+        });
     })->create();
