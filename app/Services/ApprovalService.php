@@ -60,6 +60,7 @@ class ApprovalService
 
         return $this->responseService->formatResponses($responses);
     }
+
     public function approveResponses(array $data) {
         $baseResponseData = $this->responseService->buildBaseResponseData($data);
 
