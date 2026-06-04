@@ -62,19 +62,63 @@ class ApprovalService
     }
 
     public function approveResponses(array $data) {
+//        $baseResponseData = $this->responseService->buildBaseResponseData($data);
+//
+//        $this->responseService->processResponseBatch(
+//            $data['approve'] ?? [],
+//            $data['approve_image'] ?? [],
+//            'approve',
+//            $baseResponseData,
+//            $this->responseService->getImageKit()
+//        );
+//
+//        Response::where('batch_no', $data['batch_no'])->update([
+//            'is_approved' => true,
+//        ]);
+
         $baseResponseData = $this->responseService->buildBaseResponseData($data);
+        $batchNo = $data['batch_no'];
 
-        $this->responseService->processResponseBatch(
-            $data['approve'] ?? [],
-            $data['approve_image'] ?? [],
-            'approve',
-            $baseResponseData,
-            $this->responseService->getImageKit()
-        );
+        // Check if signatory_2 (approve) is already filled for this batch
+        $signatory2Filled = Response::where('batch_no', $batchNo)
+            ->whereNotNull('approve')
+            ->exists();
 
-        Response::where('batch_no', $data['batch_no'])->update([
-            'is_approved' => true,
-//            'assessor_id' => $data['assessor_id'] ?? null,
-        ]);
+        if (!empty($data['approve'] ?? [])) {
+            if ($signatory2Filled) {
+                // Redirect approve payload to assess
+                $this->responseService->processResponseBatch(
+                    $data['approve'],
+                    $data['approve_image'] ?? [],
+                    'assess',
+                    $baseResponseData,
+                    $this->responseService->getImageKit()
+                );
+
+                Response::where('batch_no', $batchNo)->update(['is_assessed' => true]);
+            } else {
+                $this->responseService->processResponseBatch(
+                    $data['approve'],
+                    $data['approve_image'] ?? [],
+                    'approve',
+                    $baseResponseData,
+                    $this->responseService->getImageKit()
+                );
+
+                Response::where('batch_no', $batchNo)->update(['is_approved' => true]);
+            }
+        }
+
+        if (!empty($data['assess'] ?? [])) {
+            $this->responseService->processResponseBatch(
+                $data['assess'],
+                $data['assess_image'] ?? [],
+                'assess',
+                $baseResponseData,
+                $this->responseService->getImageKit()
+            );
+
+            Response::where('batch_no', $batchNo)->update(['is_assessed' => true]);
+        }
     }
 }
