@@ -196,6 +196,8 @@ class ResponseService
         // Compute hierarchical score (now returns array with breakdown)
         $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses);
 
+        $signatory2 = $this->formatFieldData($batchResponses, 'approve', 'approve');
+
         return [
             'batch_no' => (int) $batchNo,
             'progress' => (int) $progress . '%' ,
@@ -207,8 +209,8 @@ class ResponseService
             'unit' => $firstResponse?->unit?->name,
             'user_id' => $firstResponse?->user_id,
             'user' => $firstResponse?->user?->getFullNameAttribute(),
-            'approver_id' => $firstResponse?->approver_id,
-            'approver' => $firstResponse?->approver?->getFullNameAttribute(),
+            'approver_id' => $signatory2 ? $firstResponse?->assessor_id : $firstResponse?->approver_id,
+            'approver' => $signatory2 ? $firstResponse?->assessor?->getFullNameAttribute() : $firstResponse?->approver?->getFullNameAttribute(),
             'is_completed' => $firstResponse?->is_completed,
             'is_evaluated' => $firstResponse?->is_evaluated,
             'is_approved' => $firstResponse?->is_approved,
@@ -227,7 +229,7 @@ class ResponseService
                 ];
             })->values(),
             'signatory_1' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
-            'signatory_2' => $this->formatFieldData($batchResponses, 'approve', 'approve'),
+            'signatory_2' => $signatory2,
             'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
             'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
         ];
