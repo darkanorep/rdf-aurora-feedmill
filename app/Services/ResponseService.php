@@ -234,15 +234,19 @@ class ResponseService
     }
     private function formatFieldData($batchResponses, string $fieldName, string $imageFieldName): ?array
     {
-        $item = $batchResponses->map(fn($r) => [
-            $fieldName => $r->{$fieldName},
-            'images' => $r->images->pluck('url'),
-        ])->filter(fn($i) => $i[$fieldName] !== null)->first();
+        $batchNo = $batchResponses->first()?->batch_no;
+        $record = $this->response->newQuery()->where('batch_no', $batchNo)
+            ->whereNotNull($fieldName)
+            ->first();
 
-        return $item ? [
-            'name' => $item[$fieldName]['name'] ?? null,
-            "{$imageFieldName}_image" => $item['images']->first(),
-        ] : null;
+        if (!$record) return null;
+
+        $value = $record->{$fieldName};
+
+        return [
+            'name' => $value['name'] ?? null,
+            "{$imageFieldName}_image" => $record->images->pluck('url')->first(),
+        ];
     }
     private function computeHierarchicalScore($firstResponse, $batchResponses) {
         $checklist = $firstResponse?->checklist;
