@@ -235,63 +235,52 @@ class ResponseService
         })->values()->first();
     }
     private function formatBatchResponse($batchResponses, $batchNo) {
-        $section        = $batchResponses->first()?->section?->name;
-        $firstResponse  = $batchResponses->first();
-        $startAt        = $firstResponse?->start_at;
-        $countSubItems  = $firstResponse?->checklist?->countSubItems();
+        $section = $batchResponses->first()?->section?->name;
+        $firstResponse = $batchResponses->first();
+        $startAt = $firstResponse?->start_at;
+        $countSubItems = $firstResponse?->checklist?->countSubItems();
         $countResponses = $batchResponses->count();
-        $progress       = $countSubItems > 0 ? ($countResponses / $countSubItems) * 100 : 0;
-        $isCobs         = $section === 'cobs';
+        $progress = $countSubItems > 0 ? ($countResponses / $countSubItems) * 100 : 0;
 
-        $scoreData  = $isCobs ? $this->computeHierarchicalScore($firstResponse, $batchResponses) : null;
+        $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses);
+
         $signatory2 = $this->formatFieldData($batchResponses, 'approve', 'approve');
 
-        $base = [
-            'batch_no'     => (int) $batchNo,
-            'progress'     => (int) $progress . '%',
+        return [
+            'batch_no' => (int) $batchNo,
+            'progress' => (int) $progress . '%' ,
+            'score' => (int) $scoreData['score'] ?: null,
+            'score_breakdown' => $scoreData['breakdown'] ?: null ,
             'checklist_id' => $firstResponse?->checklist_id,
             'checklist_name' => $firstResponse?->checklist?->checklist_name,
-            'user_id'      => $firstResponse?->user_id,
-            'user'         => $firstResponse?->user?->getFullNameAttribute(),
-            'approver_id'  => $signatory2 ? $firstResponse?->assessor_id : $firstResponse?->approver_id,
-            'approver'     => $signatory2
-                ? $firstResponse?->assessor?->getFullNameAttribute()
-                : $firstResponse?->approver?->getFullNameAttribute(),
-            'is_completed'   => $firstResponse?->is_completed,
-            'is_evaluated'   => $firstResponse?->is_evaluated,
-            'is_approved'    => $firstResponse?->is_approved,
-            'is_assessed'    => $firstResponse?->is_assessed,
-            'good_points'    => $firstResponse?->good_points,
-            'remarks'        => $firstResponse?->remarks,
+            'unit_id' => $firstResponse?->unit_id,
+            'unit' => $firstResponse?->unit?->name,
+            'user_id' => $firstResponse?->user_id,
+            'user' => $firstResponse?->user?->getFullNameAttribute(),
+            'approver_id' => $signatory2 ? $firstResponse?->assessor_id : $firstResponse?->approver_id,
+            'approver' => $signatory2 ? $firstResponse?->assessor?->getFullNameAttribute() : $firstResponse?->approver?->getFullNameAttribute(),
+            'is_completed' => $firstResponse?->is_completed,
+            'is_evaluated' => $firstResponse?->is_evaluated,
+            'is_approved' => $firstResponse?->is_approved,
+            'is_assessed' => $firstResponse?->is_assessed,
+            'good_points' => $firstResponse?->good_points,
+            'remarks' => $firstResponse?->remarks,
             'temporal_audit' => $firstResponse?->temporal_audit,
-            'start_at'       => $startAt,
-            'end_at'         => $firstResponse?->end_at,
-            'week'           => $startAt ? min(Carbon::parse($startAt)->weekOfMonth, 4) : null,
-            'responses'      => $batchResponses->map(fn($response) => [
-                'id'       => $response->id,
-                'response' => $response->response,
-                'images'   => $response->images->pluck('url'),
-            ])->values(),
+            'start_at' => $startAt,
+            'end_at' => $firstResponse?->end_at,
+            'week' => $startAt ? min(Carbon::parse($startAt)->weekOfMonth, 4) : null,
+            'responses' => $batchResponses->map(function ($response) {
+                return [
+                    'id' => $response->id,
+                    'response' => $response->response,
+                    'images' => $response->images->pluck('url'),
+                ];
+            })->values(),
             'signatory_1' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
             'signatory_2' => $signatory2,
             'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
-            'status'      => $firstResponse?->is_approved
-                ? 'Approved'
-                : ($firstResponse?->is_completed && $progress == 100
-                    ? 'For Acknowledgement'
-                    : 'On Progress'),
+            'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
         ];
-
-        if ($isCobs) {
-            $base = array_merge([
-                'score'           => (int) $scoreData['score'],
-                'score_breakdown' => $scoreData['breakdown'],
-                'unit_id'         => $firstResponse?->unit_id,
-                'unit'            => $firstResponse?->unit?->name,
-            ], $base);
-        }
-
-        return $base;
     }
     private function formatFieldData($batchResponses, string $fieldName, string $imageFieldName): ?array
     {
