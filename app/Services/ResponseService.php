@@ -242,18 +242,15 @@ class ResponseService
         $countResponses = $batchResponses->count();
         $progress = $countSubItems > 0 ? ($countResponses / $countSubItems) * 100 : 0;
 
-        match ($section) {
-            'pests' => null,
-            default => $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses) // Compute hierarchical score (now returns array with breakdown)
-        };
+        $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses);
 
         $signatory2 = $this->formatFieldData($batchResponses, 'approve', 'approve');
 
         return [
             'batch_no' => (int) $batchNo,
             'progress' => (int) $progress . '%' ,
-            'score' => $section == 'cobs' ? (int) $scoreData['score'] : null,
-            'score_breakdown' => $section == 'cobs' ? $scoreData['breakdown'] : null,
+            'score' => (int) $scoreData['score'] ?: null,
+            'score_breakdown' => $scoreData['breakdown'] ?: null ,
             'checklist_id' => $firstResponse?->checklist_id,
             'checklist_name' => $firstResponse?->checklist?->checklist_name,
             'unit_id' => $firstResponse?->unit_id,
