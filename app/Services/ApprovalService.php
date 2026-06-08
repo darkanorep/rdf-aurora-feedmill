@@ -58,7 +58,7 @@ class ApprovalService
             ->merge($approverQuery->useFilters()->get())
             ->unique('id');
 
-        return $this->responseService->formatResponses($responses);
+        return $this->responseService->formatCobsResponses($responses);
     }
 
     public function approveResponses(array $data) {
