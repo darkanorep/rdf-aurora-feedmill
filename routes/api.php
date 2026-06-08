@@ -57,10 +57,10 @@ Route::middleware('auth:sanctum')->group(function () {
 //            Route::post('upload', [FormController::class, 'upload']);
 //        });
 
-        //PESTS
-        Route::resource('sheets', InspectionAreaPestController::class);
-        //BIRDS
-        Route::resource('surveys', InspectionAreaInfestationLevelController::class);
+        // ❌ PESTS
+//        Route::resource('sheets', InspectionAreaPestController::class);
+        // ❌ BIRDS
+//        Route::resource('surveys', InspectionAreaInfestationLevelController::class);
     });
 
     Route::group(['prefix' => 'dropdown'], function () {
@@ -75,7 +75,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('responses/assess', [ResponseController::class, 'assessResponse']);
     Route::post('responses/merge', [ResponseController::class, 'mergeResponse']);
     Route::resource('responses', ResponseController::class);
-//        ->middleware('can:acknowledgement');
 
     //APPROVAL
     Route::post('approvals/approve', [ApprovalController::class, 'approve']);

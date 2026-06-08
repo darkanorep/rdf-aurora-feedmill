@@ -13,6 +13,10 @@ class Section extends Model
     protected $guarded = [];
     protected $default_filters = SectionFilter::class;
 
+    const PESTS = 'Pests';
+    const COBS = 'Cobs';
+    const BIRDS = 'Birds';
+
     public function checklists() {
         return $this->hasMany(Checklist::class);
     }
