@@ -29,4 +29,12 @@ class ResponseFilter extends QueryFilters
             $query->whereYear('start_at', $year);
         });
     }
+
+    public function section($section) {
+        return $this->builder->when($section, function ($query) use ($section) {
+            $query->whereHas('section', function ($query) use ($section) {
+                $query->where('name', $section);
+            });
+        });
+    }
 }

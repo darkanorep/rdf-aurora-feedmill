@@ -43,4 +43,15 @@ class Response extends Model
     public function images() {
         return $this->hasMany(Image::class);
     }
+
+    public function section() {
+        return $this->hasOneThrough(
+            Section::class,
+            Checklist::class,
+            'id',
+            'id',
+            'checklist_id',
+            'section_id'
+        );
+    }
 }

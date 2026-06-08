@@ -19,6 +19,8 @@ class Checklist extends Model
     protected $casts = [
         'items' => 'json',
         'unit_ids' => 'array',
+//        'inspection_area_ids' => 'array',
+//        'infestation_level_ids' => 'array',
     ];
 
     public function section() {
@@ -29,6 +31,13 @@ class Checklist extends Model
         return $this->belongsToJson(Unit::class, 'unit_ids')->withTrashed();
     }
 
+//    public function inspectionAreas() {
+//        return $this->belongsToJson(InspectionArea::class, 'inspection_area_ids')->withTrashed();
+//    }
+//
+//    public function infestationLevels() {
+//        return $this->belongsToJson(InfestationLevel::class, 'infestation_level_ids')->withTrashed();
+//    }
     /**
      * Count total number of sub_items across all items
      */
