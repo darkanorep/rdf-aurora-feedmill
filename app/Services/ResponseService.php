@@ -29,9 +29,9 @@ class ResponseService
     }
     public function getResponses($request) {
         $responses = $this->response->useFilters()->get();
-
-        return match ($request->section) {
-            'pests', 'birds' => $this->formatPestAndBirdsResponses($responses, $request->section),
+        $section = $request->section;
+        return match ($section) {
+            'pests', 'birds' => $this->formatPestAndBirdsResponses($responses, $section),
             default => $this->formatCobsResponses($responses),
         };
     }
