@@ -40,29 +40,39 @@ class ApprovalService
         $userId = auth()->id();
 
         // Assessor query
-        $assessorQuery = Response::with('section')->where('assessor_id', $userId)->where('is_completed', true);
-        match($status) {
+        $assessorQuery = Response::with('section')
+            ->where('assessor_id', $userId)
+            ->where('is_completed', true);
+
+        $assessorQuery = match($status) {
             'pending' => $assessorQuery->where('is_approved', true)->whereNull('is_assessed'),
             default   => $assessorQuery->where('is_assessed', true),
         };
 
         // Approver query
-        $approverQuery = Response::with('section')->where('approver_id', $userId)->where('is_completed', true);
-        match($status) {
+        $approverQuery = Response::with('section')
+            ->where('approver_id', $userId)
+            ->where('is_completed', true);
+
+        $approverQuery = match($status) {
             'pending' => $approverQuery->whereNull('is_approved'),
             default   => $approverQuery->where('is_approved', true),
         };
 
-        // Merge both result sets, deduplicate by response id
         $responses = $assessorQuery->useFilters()->get()
             ->merge($approverQuery->useFilters()->get())
             ->unique('id');
 
-        $isCobs = strtolower($responses->first()?->section?->name) === 'cobs';
+        if ($responses->isEmpty()) {
+            return collect();
+        }
+
+        $sectionName = $responses->first()->section?->name ?? '';
+        $isCobs = strtolower($sectionName) === 'cobs';
 
         return $isCobs
             ? $this->responseService->formatCobsResponses($responses)
-            : $this->responseService->formatPestAndBirdsResponses($responses, $responses->first()?->section?->name);
+            : $this->responseService->formatPestAndBirdsResponses($responses, $sectionName);
     }
 
     public function approveResponses(array $data) {
