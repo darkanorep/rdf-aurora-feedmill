@@ -40,14 +40,14 @@ class ApprovalService
         $userId = auth()->id();
 
         // Assessor query
-        $assessorQuery = Response::where('assessor_id', $userId)->where('is_completed', true);
+        $assessorQuery = Response::with('section')->where('assessor_id', $userId)->where('is_completed', true);
         match($status) {
-            'pending' => $assessorQuery->where('is_approved', true),
+            'pending' => $assessorQuery->where('is_approved', true)->whereNull('is_assessed'),
             default   => $assessorQuery->where('is_assessed', true),
         };
 
         // Approver query
-        $approverQuery = Response::where('approver_id', $userId)->where('is_completed', true);
+        $approverQuery = Response::with('section')->where('approver_id', $userId)->where('is_completed', true);
         match($status) {
             'pending' => $approverQuery->whereNull('is_approved'),
             default   => $approverQuery->where('is_approved', true),
@@ -58,7 +58,11 @@ class ApprovalService
             ->merge($approverQuery->useFilters()->get())
             ->unique('id');
 
-        return $this->responseService->formatCobsResponses($responses);
+        $isCobs = strtolower($responses->first()?->section?->name) === 'cobs';
+
+        return $isCobs
+            ? $this->responseService->formatCobsResponses($responses)
+            : $this->responseService->formatPestAndBirdsResponses($responses, $responses->first()?->section?->name);
     }
 
     public function approveResponses(array $data) {
