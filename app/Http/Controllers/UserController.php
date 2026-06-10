@@ -58,16 +58,20 @@ class UserController extends Controller
         return $this->responseSuccess('Updated Successfully', new UserResource($updatedUser));
     }
 
-    public function evaluators(Request $request) {
+    public function evaluators() {
         return $this->userService->getUsersByRole('evaluator', 'Evaluator');
     }
 
-    public function approvers(Request $request) {
+    public function approvers() {
         return $this->userService->getUsersByRole('approver', 'Approver');
     }
 
-    public function assessors(Request $request) {
+    public function assessors() {
         return $this->userService->getUsersByRole('assessor', 'Assessor');
+    }
+
+    public function companions() {
+        return $this->userService->getUsersByRole('companion', 'Companion');
     }
 
     public function destroy($id) {
