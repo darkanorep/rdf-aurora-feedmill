@@ -67,6 +67,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('evaluators', [UserController::class, 'evaluators']);
         Route::get('approvers', [UserController::class, 'approvers']);
         Route::get('assessors', [UserController::class, 'assessors']);
+        Route::get('companions', [UserController::class, 'companions']);
+        Route::get('wastages', [WastageController::class, 'index']);
     });
 
     Route::resource('questionnaires', ChecklistController::class)->only(['show']);
