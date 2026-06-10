@@ -36,13 +36,15 @@ class AcknowledgementSettingRequest extends FormRequest
                         $fail("The selected {$attribute} must be an Approver or Assessor.");
                     }
                 }
-            ]
+            ],
+            'section_id' => 'required|integer|exists:sections,id',
         ];
     }
 
     public function attributes() {
         return [
-            'user_id' =>  'User'
+            'user_id' =>  'User',
+            'section_id' =>  'Section'
         ];
     }
 }
