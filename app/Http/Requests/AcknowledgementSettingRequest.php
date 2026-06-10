@@ -29,11 +29,11 @@ class AcknowledgementSettingRequest extends FormRequest
                 Rule::exists('users', 'id'),
                 function ($attribute, $value, $fail) {
                     $user = User::whereHas('role', function ($query) {
-                        $query->whereIn('name', [Role::APPROVER, Role::ASSESSOR]);
+                        $query->whereIn('name', array_merge(Role::APPROVER, Role::ASSESSOR));
                     })->where('id', $value)->exists();
 
                     if (!$user) {
-                        $fail("The selected {$attribute} must be an Approver or Assessor.");
+                        $fail("The selected {$attribute} must be an Approver, QA, Assessor, or QA Head.");
                     }
                 }
             ],
