@@ -12,8 +12,8 @@ class Role extends Model
 {
     use SoftDeletes, Filterable, HasJsonRelationships;
     const ADMIN = 'Admin';
-    const APPROVER = 'Approver';
-    const ASSESSOR = 'Assessor';
+    const APPROVER = ['Approver', 'QA'];
+    const ASSESSOR = ['Assessor', 'QA Head'];
 
     protected $default_filters = RoleFilter::class;
 
