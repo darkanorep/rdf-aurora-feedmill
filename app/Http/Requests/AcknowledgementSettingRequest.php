@@ -21,23 +21,24 @@ class AcknowledgementSettingRequest extends FormRequest
     {
         return [
             'name' => 'required|string',
-            'user_id' => 'required|integer|exists:users,id|unique:acknowledgement_settings,user_id,' . $this->route('id'),
+            'user_id' => 'required|integer|exists:users,id',
             'hierarchy' => 'required|array',
             'hierarchy.*' => [
                 'required',
                 'integer',
-                Rule::exists('users', 'id'),
-                function ($attribute, $value, $fail) {
-                    $user = User::whereHas('role', function ($query) {
-                        $query->whereIn('name', array_merge(Role::APPROVER, Role::ASSESSOR));
-                    })->where('id', $value)->exists();
-
-                    if (!$user) {
-                        $fail("The selected {$attribute} must be an Approver, QA, Assessor, or QA Head.");
-                    }
-                }
+                'exists:users,id'
+//                Rule::exists('users', 'id'),
+//                function ($attribute, $value, $fail) {
+//                    $user = User::whereHas('role', function ($query) {
+//                        $query->whereIn('name', array_merge(Role::APPROVER, Role::ASSESSOR));
+//                    })->where('id', $value)->exists();
+//
+//                    if (!$user) {
+//                        $fail("The selected {$attribute} must be an Approver, QA, Assessor, or QA Head.");
+//                    }
+//                }
             ],
-            'section_id' => 'required|integer|exists:sections,id',
+            'section_id' => 'required|integer|exists:sections,id|unique:acknowledgement_settings,section_id,' . $this->route('id'),
         ];
     }
 

@@ -62,16 +62,24 @@ class UserController extends Controller
         return $this->userService->getUsersByRole('evaluator', 'Evaluator');
     }
 
-    public function approvers() {
-        return $this->userService->getUsersByRole('approver', 'Approver');
-    }
-
-    public function assessors() {
-        return $this->userService->getUsersByRole('assessor', 'Assessor');
-    }
-
     public function companions() {
         return $this->userService->getUsersByRole('companion', 'Companion');
+    }
+
+    public function unitRepresentatives() {
+        return $this->userService->getUsersByRole('unit representative', 'Unit Representative');
+    }
+
+    public function qualityAssurance() {
+        return $this->userService->getUsersByRole('qa', 'Quality Assurance');
+    }
+
+    public function qualityAssuranceHeads() {
+        return $this->userService->getUsersByRole('qa head', 'Quality Assurance Head');
+    }
+
+    public function qualityCheckers() {
+        return $this->userService->getUsersByRole('qc', 'Quality Checker');
     }
 
     public function destroy($id) {
@@ -80,5 +88,10 @@ class UserController extends Controller
         return $user
             ? $this->responseSuccess('User successfully deleted.')
             : $this->responseNotFound('User not found.');
+    }
+
+    public function truncateUsers() {
+        $this->userService->truncateUsers();
+        return $this->responseSuccess('All users have been truncated successfully.');
     }
 }
