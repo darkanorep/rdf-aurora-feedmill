@@ -43,7 +43,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::resource('scores', ScoreController::class);
         Route::resource('wastages', WastageController::class);
         Route::resource('acknowledgement-settings', AcknowledgementSettingController::class);
-        Route::delete('responses/truncate', [ResponseController::class, 'truncateResponse']);
+        Route::group(['prefix' => 'truncate'], function () {
+            Route::delete('/responses', [ResponseController::class, 'truncateResponse']);
+            Route::delete('/users', [UserController::class, 'truncateUsers']);
+        });
 
         // ❌ COBS QUESTIONNAIRES CONSOLIDATOR
         //Route::resource('merge-forms', MergeFormController::class);
@@ -65,8 +68,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::group(['prefix' => 'dropdown'], function () {
         Route::get('evaluators', [UserController::class, 'evaluators']);
-        Route::get('approvers', [UserController::class, 'approvers']);
-        Route::get('assessors', [UserController::class, 'assessors']);
+        Route::get('qa', [UserController::class, 'qualityAssurance']);
+        Route::get('qa-head', [UserController::class, 'qualityAssuranceHeads']);
+        Route::get('companions', [UserController::class, 'companions']);
+        Route::get('qc', [UserController::class, 'qualityCheckers']);
+        Route::get('unit-representative', [UserController::class, 'unitRepresentatives']);
+        Route::get('wastages', [WastageController::class, 'index']);
     });
 
     Route::resource('questionnaires', ChecklistController::class)->only(['show']);

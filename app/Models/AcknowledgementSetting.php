@@ -26,4 +26,8 @@ class AcknowledgementSetting extends Model
     public function hierarchies() {
         return $this->belongsToJson(User::class, 'hierarchy');
     }
+
+    public function sections() {
+        return $this->belongsTo(Section::class, 'section_id');
+    }
 }
