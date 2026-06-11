@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class UserService
@@ -68,5 +69,11 @@ class UserService
             'message' => "{$singular}s fetched successfully",
             'data' => UserResource::collection($users)->map(fn($item) => $item->only(['id', 'full_name']))
         ]);
+    }
+
+    public function truncateUsers() {
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        DB::table('users')->truncate();
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
 }
