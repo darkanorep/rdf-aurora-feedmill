@@ -26,7 +26,7 @@ class AcknowledgementSettingResource extends JsonResource
                 'id' => $this->users->id,
                 'name' => $this->users->getFullNameAttribute()
             ],
-            'secctions' => [
+            'sections' => [
                 'id' => $this->sections->id,
                 'name' => $this->sections->name,
             ]
