@@ -22,9 +22,9 @@ class AcknowledgementSettingRequest extends FormRequest
         return [
             'name' => 'required|string',
             'user_id' => 'required|integer|exists:users,id',
-            'hierarchy' => 'required|array',
+            'hierarchy' => 'nullable|array',
             'hierarchy.*' => [
-                'required',
+                'nullable',
                 'integer',
                 'exists:users,id'
 //                Rule::exists('users', 'id'),
