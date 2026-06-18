@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use AllowDynamicProperties;
+use App\Models\AcknowledgementSetting;
+use App\Models\Checklist;
 use App\Models\Image;
 use App\Models\Response;
 use App\Models\Section;
@@ -26,6 +28,7 @@ class ResponseService
             config('app.imagekit_private_key'),
             config('app.imagekit_url_endpoint')
         );
+        $this->acknowledgementSetting = AcknowledgementSetting::get();
     }
     public function getResponses($request) {
         $responses = $this->response->useFilters()->get();
@@ -46,7 +49,6 @@ class ResponseService
             return $this->formatUnitResponse($unit, $batchesByUnit);
         });
     }
-
     public function formatPestAndBirdsResponses($responses, $section) {
         $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
             return $this->formatBatchResponse($batchResponses, $batchNo);
@@ -122,9 +124,9 @@ class ResponseService
             });
         }
 
-        $baseResponseData = $this->buildBaseResponseData($data, $batchNo);
+        $sectionName = $this->resolveChecklistSectionName($data['checklist_id'] ?? null);
+        $baseResponseData = $this->buildBaseResponseData($data, $batchNo, $sectionName);
 
-        // Process responses
         $this->processResponseBatch(
             $data['response'] ?? [],
             $data['image'] ?? $data['images'] ?? [],
@@ -133,14 +135,13 @@ class ResponseService
             $this->imageKit
         );
 
-        // Check if start_at is in 3rd week, duplicate for 4th week as soft deleted
-        if ($this->isThirdWeek($data['start_at'] ?? null)) {
+        if ($sectionName === 'cobs' && $this->isThirdWeek($data['start_at'] ?? null)) {
             $fourthWeekData = $data;
             $fourthWeekData['start_at'] = Carbon::parse($data['start_at'])->addWeeks(1);
-            $fourthWeekData['end_at'] = $fourthWeekData['start_at']; // Set end_at same as start_at
+            $fourthWeekData['end_at'] = $fourthWeekData['start_at'];
 
             $newBatchNo = $this->generateBatchNo();
-            $baseResponseData4thWeek = $this->buildBaseResponseData($fourthWeekData, $newBatchNo);
+            $baseResponseData4thWeek = $this->buildBaseResponseData($fourthWeekData, $newBatchNo, $sectionName);
 
             DB::transaction(function () use ($data, $baseResponseData4thWeek) {
                 $this->processResponseBatch(
@@ -151,7 +152,6 @@ class ResponseService
                     $this->imageKit
                 );
 
-                // Soft delete the 4th week responses
                 $this->response->where('batch_no', $baseResponseData4thWeek['batch_no'])
                     ->whereMonth('start_at', Carbon::parse($baseResponseData4thWeek['start_at'])->month)
                     ->whereDay('start_at', '>=', 22)
@@ -473,15 +473,35 @@ class ResponseService
         // Fallback
         return is_object($data) ? (array) $data : [];
     }
-    public function buildBaseResponseData(array $data, ?string $batchNo = null): array
+    public function buildBaseResponseData(array $data, ?string $batchNo = null, ?string $sectionName = null): array
     {
+        $sectionName ??= $this->resolveChecklistSectionName($data['checklist_id'] ?? null);
+        $isPests = $sectionName === 'pests';
+        $resolvedEvaluatorId = $this->resolveEvaluatorId($data['checklist_id'] ?? null);
+
+        $acknowledgeSetting = AcknowledgementSetting::with([
+            'users' => fn ($query) => $query->select('id'),
+            'hierarchies' => fn ($query) => $query->select('id'),
+            'sections' => fn ($query) => $query->select('id'),
+        ])
+            ->whereHas('sections', function ($q) use ($sectionName) {
+                $q->where('name', $sectionName);
+            })
+            ->first();
+
         return [
             'checklist_id' => $data['checklist_id'] ?? null,
             'unit_id' => $data['unit_id'] ?? null,
             'user_id' => auth()->user()->id ?? $data['user_id'] ?? null,
-            'approver_id' => $data['approver_id'] ?? null,
-            'evaluator_id' => $data['evaluator_id'] ?? null,
-            'assessor_id' => $data['assessor_id'] ?? null,
+//            'evaluator_id' => $isPests
+//                ? null
+//                : ($resolvedEvaluatorId ?? $data['evaluator_id'] ?? null),
+            'evaluator_id' => $acknowledgeSetting->users->id ?? $data['evaluator_id'] ?? null ,
+//            'approver_id' => $isPests
+//                ? ($resolvedEvaluatorId ?? $data['approver_id'] ?? null)
+//                : ($data['approver_id'] ?? null),
+            'approver_id' => $acknowledgeSetting->hierarchy[0] ?? $data['approver_id'] ?? null ,
+            'assessor_id' => $acknowledgeSetting->hierarchy[1] ?? $data['assessor_id'] ?? null,
             'batch_no' => $data['batch_no'] ?? $batchNo,
             'good_points' => $data['good_points'] ?? null,
             'remarks' => $data['remarks'] ?? null,
@@ -553,6 +573,34 @@ class ResponseService
                 'end_at' => $endAt,
                 'deleted_at' => null, // Restore by clearing deleted_at
             ]);
+    }
+    protected function resolveEvaluatorId(?int $checklistId): ?int
+    {
+        if (! $checklistId) {
+            return null;
+        }
+
+        $sectionId = Checklist::find($checklistId)?->section_id;
+
+        if (! $sectionId) {
+            return null;
+        }
+
+        return $this->acknowledgementSetting
+            ->firstWhere('section_id', $sectionId)
+            ?->user_id;
+    }
+    private function resolveChecklistSectionName(?int $checklistId): ?string
+    {
+        if (!$checklistId) {
+            return null;
+        }
+
+        $checklist = Checklist::with('section')->find($checklistId);
+
+        return $checklist?->section?->name
+            ? strtolower($checklist->section->name)
+            : null;
     }
     public function truncateResponse() {
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
