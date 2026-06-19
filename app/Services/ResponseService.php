@@ -265,6 +265,7 @@ class ResponseService
             'is_assessed' => $firstResponse?->is_assessed,
             'good_points' => $firstResponse?->good_points,
             'remarks' => $firstResponse?->remarks,
+            'notes' => $firstResponse?->notes,
             'temporal_audit' => $firstResponse?->temporal_audit,
             'start_at' => $startAt,
             'end_at' => $firstResponse?->end_at,
@@ -484,9 +485,8 @@ class ResponseService
             'hierarchies' => fn ($query) => $query->select('id'),
             'sections' => fn ($query) => $query->select('id'),
         ])
-            ->whereHas('sections', function ($q) use ($sectionName) {
-                $q->where('name', $sectionName);
-            })
+            ->join('sections', 'acknowledgement_settings.section_id', '=', 'sections.id')
+            ->where('sections.name', $sectionName)
             ->first();
 
         return [
@@ -505,6 +505,7 @@ class ResponseService
             'batch_no' => $data['batch_no'] ?? $batchNo,
             'good_points' => $data['good_points'] ?? null,
             'remarks' => $data['remarks'] ?? null,
+            'notes' => $data['notes'] ?? null,
             'temporal_audit' => $data['temporal_audit'] ?? null,
             'start_at' => $data['start_at'] ?? Carbon::now(),
             'is_completed' => $data['is_completed'] ?? null,
