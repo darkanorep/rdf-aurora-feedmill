@@ -111,7 +111,7 @@ class ResponseService
         // Get first batch to extract user and checklist info
         $firstBatch = $unitBatches->first();
         $userId = $firstBatch?->user_id ?? null;
-        $checklistId = $firstBatch?->checklist_id;
+        $checklistId = $unit->checkLists ?? null;
 
         // Check previous month completion for cobs (required: 4 times)
         $previousMonthCompleted = $this->checkPreviousMonthCompleted($userId, $checklistId, 4);
