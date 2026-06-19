@@ -34,7 +34,7 @@ class ApprovalService
                     $query->where('responses.approver_id', $userId)->where('responses.is_completed', true)
                         ->where('sections.name', '!=', 'pests'); //APPROVER
                     $isPending
-                        ? $query->whereNull('responses.is_approved')
+                        ? $query->whereNull('responses.is_approved')->where('responses.is_evaluated', true)
                         : $query->where('responses.is_approved', true)->whereNull('responses.is_assessed');
                 })->orWhere(function ($query) use ($userId, $isPending) {
                     $query->where('responses.assessor_id', $userId)->where('responses.is_completed', true)
