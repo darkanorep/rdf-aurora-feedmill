@@ -32,6 +32,10 @@ class Response extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function evaluator() {
+        return $this->belongsTo(User::class);
+    }
+
     public function approver() {
         return $this->belongsTo(User::class);
     }
