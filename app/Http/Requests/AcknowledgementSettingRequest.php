@@ -38,7 +38,8 @@ class AcknowledgementSettingRequest extends FormRequest
 //                    }
 //                }
             ],
-            'section_id' => 'required|integer|exists:sections,id|unique:acknowledgement_settings,section_id,' . $this->route('id'),
+//            'section_id' => 'required|integer|exists:sections,id|unique:acknowledgement_settings,section_id,' . $this->route('id'),
+            'section_id' => 'required|integer|exists:sections,id',
         ];
     }
 
