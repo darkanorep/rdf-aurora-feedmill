@@ -45,7 +45,13 @@ class ResponseService
 
         $batchesByUnit = $batches->groupBy('unit_id');
 
-        return Unit::query()->with(['checkLists'])->get()->mapWithKeys(function ($unit) use ($batchesByUnit) {
+//        return Unit::query()->with(['checkLists'])->get()->mapWithKeys(function ($unit) use ($batchesByUnit) {
+//            return $this->formatUnitResponse($unit, $batchesByUnit);
+//        });
+
+        return Unit::query()->with([
+            'checkLists' => fn ($query) => $query->withoutTrashed()  // ← Add this
+        ])->get()->mapWithKeys(function ($unit) use ($batchesByUnit) {
             return $this->formatUnitResponse($unit, $batchesByUnit);
         });
     }
