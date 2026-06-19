@@ -92,6 +92,7 @@ class ResponseService
                 $checklist->checklist_name => [
                     'id'             => $checklist->id,
                     'checklist_name' => $checklist->checklist_name,
+                    'created_at'     => $checklist->created_at,
                     'periods'        => $periods,
                 ],
             ];
@@ -109,6 +110,7 @@ class ResponseService
                     return [
                         'id' => $checklist->id,
                         'checklist_name' => $checklist->checklist_name,
+                        'created_at' => $checklist->created_at,
                     ];
                 })->values(),
                 'weeks' => collect(range(1, 4))->mapWithKeys(function ($week) use ($batchesByWeek) {
