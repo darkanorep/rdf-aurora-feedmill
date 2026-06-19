@@ -485,9 +485,8 @@ class ResponseService
             'hierarchies' => fn ($query) => $query->select('id'),
             'sections' => fn ($query) => $query->select('id'),
         ])
-            ->whereHas('sections', function ($q) use ($sectionName) {
-                $q->where('name', $sectionName);
-            })
+            ->join('sections', 'acknowledgement_settings.section_id', '=', 'sections.id')
+            ->where('sections.name', $sectionName)
             ->first();
 
         return [

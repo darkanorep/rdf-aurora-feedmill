@@ -22,29 +22,30 @@ class ApprovalService
         $isPending = $status == 'pending';
 
         $responses = Response::with('section')
+            ->join('checklists', 'responses.checklist_id', '=', 'checklists.id')
+            ->join('sections', 'checklists.section_id', '=', 'sections.id')
             ->where(function ($query) use ($userId, $isPending) {
                 $query->where(function ($query) use ($userId, $isPending) {
-                    $query->where('evaluator_id', $userId); //EVALUATE
+                    $query->where('responses.evaluator_id', $userId); //EVALUATE
                     $isPending
-                        ? $query->whereNull('is_evaluated')->whereNull('is_approved')->whereNull('is_assessed')
-                        : $query->where('is_evaluated', true)->whereNull('is_approved')->whereNull('is_assessed');
+                        ? $query->whereNull('responses.is_evaluated')->whereNull('responses.is_approved')->whereNull('responses.is_assessed')
+                        : $query->where('responses.is_evaluated', true)->whereNull('responses.is_approved')->whereNull('responses.is_assessed');
                 })->orWhere(function ($query) use ($userId, $isPending) {
-                    $query->where('approver_id', $userId)->where('is_completed', true)->whereHas('section', function ($q) {
-                        $q->where('name', '!=', 'pests');
-                    }); //APPROVER
+                    $query->where('responses.approver_id', $userId)->where('responses.is_completed', true)
+                        ->where('sections.name', '!=', 'pests'); //APPROVER
                     $isPending
-                        ? $query->whereNull('is_approved')
-                        : $query->where('is_approved', true)->whereNull('is_assessed');
+                        ? $query->whereNull('responses.is_approved')
+                        : $query->where('responses.is_approved', true)->whereNull('responses.is_assessed');
                 })->orWhere(function ($query) use ($userId, $isPending) {
-                    $query->where('assessor_id', $userId)->where('is_completed', true)->whereHas('section', function ($q) {
-                        $q->where('name', '!=', 'pests');
-                    }); //ASSESSOR
+                    $query->where('responses.assessor_id', $userId)->where('responses.is_completed', true)
+                        ->where('sections.name', '!=', 'pests'); //ASSESSOR
                     $isPending
-                        ? $query->where('is_approved', true)->whereNull('is_assessed')
-                        : $query->where('is_assessed', true);
+                        ? $query->where('responses.is_approved', true)->whereNull('responses.is_assessed')
+                        : $query->where('responses.is_assessed', true);
                 });
             })
             ->useFilters()
+            ->distinct() // Avoid duplicates from joins
             ->get();
 
         if ($responses->isEmpty()) {
