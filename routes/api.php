@@ -28,9 +28,13 @@ use App\Http\Controllers\ApprovalController;
 
 Route::post('login', [AuthController::class, 'login']);
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware([
+//    'auth:sanctum'
+])->group(function () {
 
-    Route::group(['middleware' => 'can:admin'], function () {
+    Route::group([
+//        'middleware' => 'can:admin'
+    ], function () {
         Route::resource('checklists', ChecklistController::class);
         Route::resource('sections', SectionController::class);
         Route::resource('permissions', PermissionController::class);
