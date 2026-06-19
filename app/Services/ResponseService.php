@@ -92,7 +92,7 @@ class ResponseService
                 $checklist->checklist_name => [
                     'id'             => $checklist->id,
                     'checklist_name' => $checklist->checklist_name,
-                    'created_at'     => $checklist->created_at,
+                    'created_at'     => Carbon::parse($checklist->created_at)->format('Y-m-d'),
                     'periods'        => $periods,
                 ],
             ];
@@ -110,7 +110,7 @@ class ResponseService
                     return [
                         'id' => $checklist->id,
                         'checklist_name' => $checklist->checklist_name,
-                        'created_at' => $checklist->created_at,
+                        'created_at' => Carbon::parse($checklist->created_at)->format('Y-m-d'),
                     ];
                 })->values(),
                 'weeks' => collect(range(1, 4))->mapWithKeys(function ($week) use ($batchesByWeek) {
