@@ -45,10 +45,6 @@ class ResponseService
 
         $batchesByUnit = $batches->groupBy('unit_id');
 
-//        return Unit::query()->with(['checkLists'])->get()->mapWithKeys(function ($unit) use ($batchesByUnit) {
-//            return $this->formatUnitResponse($unit, $batchesByUnit);
-//        });
-
         return Unit::query()->with([
             'checkLists' => fn ($query) => $query->withoutTrashed()  // ← Add this
         ])->get()->mapWithKeys(function ($unit) use ($batchesByUnit) {
@@ -66,7 +62,9 @@ class ResponseService
             ->first()
             ?->checkLists ?? collect();
 
-        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section) {
+        $requiredCount = $section === 'birds' ? 4 : 2;
+
+        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount) {
             $checklistBatches = $batches->where('checklist_id', $checklist->id);
 
             if ($section === 'birds') {
@@ -88,24 +86,40 @@ class ResponseService
                 ];
             }
 
+            $userId = $checklistBatches->first()['user_id'] ?? null;
+            $previousMonthCompleted = $userId
+                ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
+                : null;
+
             return [
                 $checklist->checklist_name => [
-                    'id'             => $checklist->id,
-                    'checklist_name' => $checklist->checklist_name,
-                    'created_at'     => Carbon::parse($checklist->created_at)->format('Y-m-d'),
-                    'periods'        => $periods,
+                    'id'                      => $checklist->id,
+                    'checklist_name'          => $checklist->checklist_name,
+                    'created_at'              => Carbon::parse($checklist->created_at)->format('Y-m-d'),
+                    'previous_month_completed' => $previousMonthCompleted,
+                    'periods'                 => $periods,
                 ],
             ];
         });
     }
+
     private function formatUnitResponse($unit, $batchesByUnit) {
         $unitBatches = $batchesByUnit->get($unit->id, collect());
         $batchesByWeek = $unitBatches->groupBy('week');
         $checklists = $unit->checkLists;
 
+        // Get first batch to extract user and checklist info
+        $firstBatch = $unitBatches->first();
+        $userId = $firstBatch?->user_id;
+        $checklistId = $firstBatch?->checklist_id;
+
+        // Check previous month completion for cobs (required: 4 times)
+        $previousMonthCompleted = $this->checkPreviousMonthCompleted($userId, $checklistId, 4);
+
         return [
             'Unit: ' . $unit->name => [
                 'unit_id' => $unit->id,
+                'previous_month_completed' => $previousMonthCompleted,
                 'checklists' => $checklists->map(function ($checklist) {
                     return [
                         'id' => $checklist->id,
