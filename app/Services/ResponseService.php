@@ -251,22 +251,39 @@ class ResponseService
         $progress = $countSubItems > 0 ? ($countResponses / $countSubItems) * 100 : 0;
 
         $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses);
-
         $signatory2 = $this->formatFieldData($batchResponses, 'approve', 'approve');
+
+        // Add this logic for previous month completion
+
+        $requiredCount = match ($section) {
+            'cobs', 'birds' => 4,
+            'pests' => 2,
+            default => 0,
+        };
+
+        $previousMonthCompleted = $this->checkPreviousMonthCompleted(
+            $firstResponse?->user_id,
+            $firstResponse?->checklist_id,
+            $requiredCount
+        );
 
         return [
             'batch_no' => (int) $batchNo,
-            'progress' => (int) $progress . '%' ,
+            'progress' => (int) $progress . '%',
             'score' => (int) $scoreData['score'] ?: null,
-            'score_breakdown' => $scoreData['breakdown'] ?: null ,
+            'score_breakdown' => $scoreData['breakdown'] ?: null,
             'checklist_id' => $firstResponse?->checklist_id,
             'checklist_name' => $firstResponse?->checklist?->checklist_name,
             'unit_id' => $firstResponse?->unit_id,
             'unit' => $firstResponse?->unit?->name,
             'user_id' => $firstResponse?->user_id,
             'user' => $firstResponse?->user?->getFullNameAttribute(),
+            'evaluator_id' => $firstResponse?->evaluator_id,
+            'evaluator' => $firstResponse?->evaluator?->getFullNameAttribute(),
             'approver_id' => $signatory2 ? $firstResponse?->assessor_id : $firstResponse?->approver_id,
             'approver' => $signatory2 ? $firstResponse?->assessor?->getFullNameAttribute() : $firstResponse?->approver?->getFullNameAttribute(),
+            'assessor_id' => $firstResponse?->assessor_id,
+            'assessor' => $firstResponse?->assessor?->getFullNameAttribute(),
             'is_completed' => $firstResponse?->is_completed,
             'is_evaluated' => $firstResponse?->is_evaluated,
             'is_approved' => $firstResponse?->is_approved,
@@ -288,6 +305,7 @@ class ResponseService
             'signatory_1' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
             'signatory_2' => $signatory2,
             'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
+            'previous_month_completed' => $previousMonthCompleted,
             'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
         ];
     }
@@ -306,6 +324,18 @@ class ResponseService
             'name' => $value['name'] ?? null,
             "{$imageFieldName}_image" => $record->images->pluck('url')->first(),
         ];
+    }
+    private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount) {
+        $previousMonth = now()->subMonth();
+
+        $completedCount = Response::where('user_id', $userId)
+            ->where('checklist_id', $checklistId)
+            ->where('is_completed', true)
+            ->whereMonth('start_at', $previousMonth->month)
+            ->whereYear('start_at', $previousMonth->year)
+            ->count();
+
+        return $completedCount >= $requiredCount;
     }
     private function computeHierarchicalScore($firstResponse, $batchResponses) {
         $checklist = $firstResponse?->checklist;
