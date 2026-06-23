@@ -60,6 +60,76 @@ class ApprovalService
         };
     }
 
+    public function statusCount() {
+        $userId = auth()->id();
+
+        $pendingEvaluate = Response::with('section')
+            ->where('evaluator_id', $userId)
+            ->whereNull('is_evaluated')
+            ->whereNull('is_approved')
+            ->whereNull('is_assessed')
+            ->distinct('batch_no')
+            ->get()
+            ->groupBy('batch_no')
+            ->map(fn($group) => $group->first()->section?->name)
+            ->groupBy(fn($section) => strtoupper($section ?? 'UNKNOWN'))
+            ->map(fn($group) => $group->count());
+
+        $pendingApprove = Response::with('section')
+            ->where('approver_id', $userId)
+            ->where('is_completed', true)
+            ->whereNull('is_approved')
+            ->whereNull('is_assessed')
+            ->distinct('batch_no')
+            ->get()
+            ->groupBy('batch_no')
+            ->map(fn($group) => $group->first()->section?->name)
+            ->groupBy(fn($section) => strtoupper($section ?? 'UNKNOWN'))
+            ->map(fn($group) => $group->count());
+
+        $pendingAssess = Response::with('section')
+            ->where('assessor_id', $userId)
+            ->where('is_completed', true)
+            ->where('is_approved', true)
+            ->whereNull('is_assessed')
+            ->distinct('batch_no')
+            ->get()
+            ->groupBy('batch_no')
+            ->map(fn($group) => $group->first()->section?->name)
+            ->groupBy(fn($section) => strtoupper($section ?? 'UNKNOWN'))
+            ->map(fn($group) => $group->count());
+
+        // Merge by summing each section
+        $sectionCounts = collect();
+
+        foreach ($pendingEvaluate as $section => $count) {
+            $sectionCounts[$section] = ($sectionCounts[$section] ?? 0) + $count;
+        }
+
+        foreach ($pendingApprove as $section => $count) {
+            $sectionCounts[$section] = ($sectionCounts[$section] ?? 0) + $count;
+        }
+
+        foreach ($pendingAssess as $section => $count) {
+            $sectionCounts[$section] = ($sectionCounts[$section] ?? 0) + $count;
+        }
+
+        // Add all sections with 0 count if not present
+        $allSections = ['COBS', 'PESTS', 'BIRDS'];
+        foreach ($allSections as $section) {
+            if (!$sectionCounts->has($section)) {
+                $sectionCounts[$section] = 0;
+            }
+        }
+
+        return [
+            'pending' => [
+                'TOTAL' => $sectionCounts->sum(),
+                ...$sectionCounts->toArray(),
+            ]
+        ];
+    }
+
     public function approveResponses(array $data) {
         $batchNo = $data['batch_no'];
         $section = $data['section'];
@@ -144,7 +214,5 @@ class ApprovalService
                 }
                 break;
         }
-
-
     }
 }

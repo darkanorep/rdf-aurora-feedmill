@@ -22,4 +22,8 @@ class ApprovalController extends Controller
             'message' => 'Approved successfully.',
         ], 200);
     }
+
+    public function countStatus() {
+        return  $this->approvalService->statusCount();
+    }
 }
