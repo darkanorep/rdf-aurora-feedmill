@@ -60,6 +60,40 @@ class ApprovalService
         };
     }
 
+    public function statusCount() {
+        $userId = auth()->id();
+
+        $pendingEvaluate = Response::where('responses.evaluator_id', $userId)
+            ->whereNull('responses.is_evaluated')
+            ->whereNull('responses.is_approved')
+            ->whereNull('responses.is_assessed')
+            ->groupBy('batch_no')
+            ->count();
+
+        $pendingApprove = Response::join('checklists', 'responses.checklist_id', '=', 'checklists.id')
+            ->join('sections', 'checklists.section_id', '=', 'sections.id')
+            ->where('responses.approver_id', $userId)
+            ->where('responses.is_completed', true)
+            ->whereNull('responses.is_approved')
+            ->where('sections.name', '!=', 'pests')
+            ->groupBy('batch_no')
+            ->count();
+
+        $pendingAssess = Response::join('checklists', 'responses.checklist_id', '=', 'checklists.id')
+            ->join('sections', 'checklists.section_id', '=', 'sections.id')
+            ->where('responses.assessor_id', $userId)
+            ->where('responses.is_completed', true)
+            ->where('responses.is_approved', true)
+            ->whereNull('responses.is_assessed')
+            ->where('sections.name', '!=', 'pests')
+            ->groupBy('batch_no')
+            ->count();
+
+        return [
+            'pending' => $pendingEvaluate + $pendingApprove + $pendingAssess
+        ];
+    }
+
     public function approveResponses(array $data) {
         $batchNo = $data['batch_no'];
         $section = $data['section'];
@@ -144,7 +178,5 @@ class ApprovalService
                 }
                 break;
         }
-
-
     }
 }

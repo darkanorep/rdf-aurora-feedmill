@@ -110,8 +110,10 @@ class ResponseService
 
         // Get first batch to extract user and checklist info
         $firstBatch = $unitBatches->first();
-        $userId = $firstBatch?->user_id;
-        $checklistId = $firstBatch?->checklist_id;
+
+        // Handle both array and object returns
+        $userId = is_array($firstBatch) ? $firstBatch['user_id'] ?? null : $firstBatch?->user_id;
+        $checklistId = is_array($firstBatch) ? $firstBatch['checklist_id'] ?? null : $firstBatch?->checklist_id;
 
         // Check previous month completion for cobs (required: 4 times)
         $previousMonthCompleted = $this->checkPreviousMonthCompleted($userId, $checklistId, 4);
@@ -532,14 +534,16 @@ class ResponseService
         $isPests = $sectionName === 'pests';
         $resolvedEvaluatorId = $this->resolveEvaluatorId($data['checklist_id'] ?? null);
 
-        $acknowledgeSetting = AcknowledgementSetting::with([
-            'users' => fn ($query) => $query->select('id'),
-            'hierarchies' => fn ($query) => $query->select('id'),
-            'sections' => fn ($query) => $query->select('id'),
-        ])
-            ->join('sections', 'acknowledgement_settings.section_id', '=', 'sections.id')
-            ->where('sections.name', $sectionName)
-            ->first();
+        if ($sectionName === 'pests' || $sectionName == 'birds') {
+            $acknowledgeSetting = AcknowledgementSetting::with([
+                'users' => fn ($query) => $query->select('id'),
+                'hierarchies' => fn ($query) => $query->select('id'),
+                'sections' => fn ($query) => $query->select('id'),
+            ])->where('user_id', $data['evaluator_id'])
+                ->join('sections', 'acknowledgement_settings.section_id', '=', 'sections.id')
+                ->where('sections.name', $sectionName)
+                ->first();
+        }
 
         return [
             'checklist_id' => $data['checklist_id'] ?? null,

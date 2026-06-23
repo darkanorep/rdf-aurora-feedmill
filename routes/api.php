@@ -85,7 +85,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     //APPROVAL
     Route::post('approvals/approve', [ApprovalController::class, 'approve']);
+    Route::get('approvals/status-count', [ApprovalController::class, 'countStatus']);
     Route::resource('approvals', ApprovalController::class);
+
 
     //FINAL APPROVAL
     Route::post('assess/assess', [AssessController::class, 'asses']);
