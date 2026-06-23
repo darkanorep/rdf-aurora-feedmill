@@ -534,13 +534,12 @@ class ResponseService
         $isPests = $sectionName === 'pests';
         $resolvedEvaluatorId = $this->resolveEvaluatorId($data['checklist_id'] ?? null);
 
-        if ($sectionName === 'pests' || $sectionName == 'birds') {
+        if ($sectionName == 'pests' || $sectionName == 'birds') {
             $acknowledgeSetting = AcknowledgementSetting::with([
                 'users' => fn ($query) => $query->select('id'),
                 'hierarchies' => fn ($query) => $query->select('id'),
                 'sections' => fn ($query) => $query->select('id'),
-            ])->where('user_id', $data['evaluator_id'])
-                ->join('sections', 'acknowledgement_settings.section_id', '=', 'sections.id')
+            ])->join('sections', 'acknowledgement_settings.section_id', '=', 'sections.id')
                 ->where('sections.name', $sectionName)
                 ->first();
         }
