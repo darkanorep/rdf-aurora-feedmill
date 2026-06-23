@@ -22,6 +22,7 @@ class ApprovalService
         $isPending = $status == 'pending';
 
         $responses = Response::with(['section', 'images'])
+            ->select('responses.*')
             ->join('checklists', 'responses.checklist_id', '=', 'checklists.id')
             ->join('sections', 'checklists.section_id', '=', 'sections.id')
             ->where(function ($query) use ($userId, $isPending) {
