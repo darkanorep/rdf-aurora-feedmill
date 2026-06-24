@@ -70,6 +70,10 @@ class UserController extends Controller
         return $this->userService->getUsersByRole('unit representative', 'Unit Representative');
     }
 
+    public function approvers() {
+        return $this->userService->getUsersByRole('approver', 'Approver');
+    }
+
     public function qualityAssurance() {
         return $this->userService->getUsersByRole('qa', 'Quality Assurance');
     }

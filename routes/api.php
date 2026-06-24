@@ -73,6 +73,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('companions', [UserController::class, 'companions']);
         Route::get('qc', [UserController::class, 'qualityCheckers']);
         Route::get('unit-representative', [UserController::class, 'unitRepresentatives']);
+        Route::get('approvers', [UserController::class, 'approvers']);
         Route::get('wastages', [WastageController::class, 'index']);
     });
 
