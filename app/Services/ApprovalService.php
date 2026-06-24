@@ -41,7 +41,7 @@ class ApprovalService
                     $query->where('responses.assessor_id', $userId)->where('responses.is_completed', true)
                         ->where('sections.name', '!=', 'pests'); //ASSESSOR
                     $isPending
-                        ? $query->where('responses.is_approved', true)->where('responses.is_assessed', true)
+                        ? $query->where('responses.is_approved', true)
                         : $query->where('responses.is_assessed', true);
                 });
             })
