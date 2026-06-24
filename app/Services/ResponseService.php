@@ -339,17 +339,21 @@ class ResponseService
             "{$imageFieldName}_image" => $record->images->pluck('url')->first(),
         ];
     }
-    private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount) {
-        $previousMonth = now()->subMonth();
+    private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount): ?bool {
+        if (!$userId || !$checklistId) {
+            return null;
+        }
 
-        $completedCount = Response::where('user_id', $userId)
+        $previousMonth = Carbon::now()->subMonth();
+
+        $count = Response::where('user_id', $userId)
             ->where('checklist_id', $checklistId)
-            ->where('is_completed', true)
-            ->whereMonth('start_at', $previousMonth->month)
-            ->whereYear('start_at', $previousMonth->year)
+            ->where('is_completed', true)               // ← Always true, not $requiredCount
+            ->whereMonth('start_at', $previousMonth->month)  // ← month value
+            ->whereYear('start_at', $previousMonth->year)    // ← year value
             ->count();
 
-        return $completedCount >= $requiredCount;
+        return $count >= $requiredCount;
     }
     private function computeHierarchicalScore($firstResponse, $batchResponses) {
         $checklist = $firstResponse?->checklist;
@@ -667,6 +671,7 @@ class ResponseService
 //        DB::table('wastages')->truncate();
 //        DB::table('scores')->truncate();
 //        DB::table('sections')->truncate();
+//        DB::table('pests')->truncate();
 
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
