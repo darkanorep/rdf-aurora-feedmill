@@ -661,6 +661,12 @@ class ResponseService
 
         DB::table('images')->truncate();
         DB::table('responses')->truncate();
+//        DB::table('checklists')->truncate();
+//        DB::table('acknowledgement_settings')->truncate();
+//        DB::table('infestation_levels')->truncate();
+//        DB::table('wastages')->truncate();
+//        DB::table('scores')->truncate();
+//        DB::table('sections')->truncate();
 
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
