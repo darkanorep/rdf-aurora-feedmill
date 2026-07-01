@@ -79,6 +79,10 @@ class ResponseService
                     }][] = $batch;
                 }
                 $periods = array_map(fn($p) => collect($p)->values(), $periods);
+
+                // Extract Inspection Areas from the checklist's items JSON column
+                $inspectionAreas = collect($checklist->items)
+                    ->firstWhere('name', 'Inspection Areas')['items'] ?? [];
             } else {
                 $periods = [
                     'Period 1' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day <= 15)->values(),
@@ -93,11 +97,12 @@ class ResponseService
 
             return [
                 $checklist->checklist_name => [
-                    'id'                      => $checklist->id,
-                    'checklist_name'          => $checklist->checklist_name,
-                    'created_at'              => Carbon::parse($checklist->created_at)->format('Y-m-d'),
+                    'id'                       => $checklist->id,
+                    'checklist_name'           => $checklist->checklist_name,
+                    'created_at'               => Carbon::parse($checklist->created_at)->format('Y-m-d'),
                     'previous_month_completed' => $previousMonthCompleted,
-                    'periods'                 => $periods,
+                    'periods'                  => $periods,
+                    ...($section === 'birds' ? ['inspection_areas' => $inspectionAreas] : []),
                 ],
             ];
         });
