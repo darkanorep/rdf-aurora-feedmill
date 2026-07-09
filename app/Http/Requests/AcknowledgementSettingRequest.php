@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Role;
+use App\Models\Section;
 use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,7 +22,12 @@ class AcknowledgementSettingRequest extends FormRequest
     {
         return [
             'name' => 'required|string',
-            'user_id' => 'required|integer|exists:users,id',
+//            'user_id' => 'required|integer|exists:users,id',
+            'user_id' => [
+                Rule::requiredIf(fn () => $this->input('section') === Section::BIRDS),
+                'integer',
+                'exists:users,id',
+            ],
             'hierarchy' => 'nullable|array',
             'hierarchy.*' => [
                 'nullable',
