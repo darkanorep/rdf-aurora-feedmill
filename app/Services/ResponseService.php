@@ -538,8 +538,6 @@ class ResponseService
     public function buildBaseResponseData(array $data, ?string $batchNo = null, ?string $sectionName = null): array
     {
         $sectionName ??= $this->resolveChecklistSectionName($data['checklist_id'] ?? null);
-        $isPests = $sectionName === 'pests';
-        $resolvedEvaluatorId = $this->resolveEvaluatorId($data['checklist_id'] ?? null);
 
         if ($sectionName == 'pests' || $sectionName == 'birds') {
             $acknowledgeSetting = AcknowledgementSetting::with([
@@ -555,13 +553,7 @@ class ResponseService
             'checklist_id' => $data['checklist_id'] ?? null,
             'unit_id' => $data['unit_id'] ?? null,
             'user_id' => auth()->user()->id ?? $data['user_id'] ?? null,
-//            'evaluator_id' => $isPests
-//                ? null
-//                : ($resolvedEvaluatorId ?? $data['evaluator_id'] ?? null),
             'evaluator_id' => $acknowledgeSetting->users->id ?? $data['evaluator_id'] ?? null ,
-//            'approver_id' => $isPests
-//                ? ($resolvedEvaluatorId ?? $data['approver_id'] ?? null)
-//                : ($data['approver_id'] ?? null),
             'approver_id' => $acknowledgeSetting->hierarchy[0] ?? $data['approver_id'] ?? null ,
             'assessor_id' => $acknowledgeSetting->hierarchy[1] ?? $data['assessor_id'] ?? null,
             'batch_no' => $data['batch_no'] ?? $batchNo,
@@ -571,6 +563,7 @@ class ResponseService
             'temporal_audit' => $data['temporal_audit'] ?? null,
             'start_at' => $data['start_at'] ?? Carbon::now(),
             'is_completed' => $data['is_completed'] ?? null,
+            'is_evaluated' => $sectionName == 'birds' ? 1 : null,
             'end_at' => isset($data['is_completed']) && $data['is_completed'] ? Carbon::now() : null,
         ];
     }
