@@ -617,16 +617,16 @@ class ResponseService
     public function mergeResponse($data) {
         $month = $data['month'] ?? null;
         $year = $data['year'] ?? null;
-        $startAt = $data['start_at'] ?? Carbon::now();
-        $endAt = $data['end_at'] ?? $startAt;
+//        $startAt = $data['start_at'] ?? Carbon::now();
+//        $endAt = $data['end_at'] ?? $startAt;
 
         $this->response
             ->onlyTrashed() // Only soft-deleted records
             ->whereYear('start_at', $year)
             ->whereMonth('start_at', $month)
             ->update([
-                'start_at' => $startAt,
-                'end_at' => $endAt,
+//                'start_at' => $startAt,
+//                'end_at' => $endAt,
                 'deleted_at' => null, // Restore by clearing deleted_at
             ]);
     }
