@@ -129,7 +129,6 @@ class ResponseService
 
         return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount, $userId) {
             $checklistBatches = $batches->where('checklist_id', $checklist->id);
-
             if ($section === 'birds') {
                 $periods = ['Period 1' => [], 'Period 2' => [], 'Period 3' => [], 'Period 4' => []];
                 foreach ($checklistBatches as $batch) {
@@ -152,9 +151,8 @@ class ResponseService
                 ];
             }
 
-            $previousMonthCompleted = $userId
-                ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
-                : null;
+
+            $previousMonthCompleted = $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount);
 
             return [
                 $checklist->checklist_name => [
@@ -405,19 +403,16 @@ class ResponseService
             "{$imageFieldName}_image" => $record->images->pluck('url')->first(),
         ];
     }
-    private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount): ?bool {
-        if (!$userId || !$checklistId) {
-            return null;
-        }
+    private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount) {
+        $previousMonth = Carbon::createFromDate(request()->input('year'), request()->input('month'), 1)->subMonth();
 
-        $previousMonth = Carbon::now()->subMonth();
-
-        $count = Response::where('user_id', $userId)
+        $count = Response::where('user_id', auth()->id())
             ->where('checklist_id', $checklistId)
-            ->where('is_completed', true)               // ← Always true, not $requiredCount
-            ->whereMonth('start_at', $previousMonth->month)  // ← month value
-            ->whereYear('start_at', $previousMonth->year)    // ← year value
-            ->count();
+            ->where('is_completed', true)
+            ->whereMonth('start_at', $previousMonth->month)
+            ->whereYear('start_at', $previousMonth->year)
+            ->distinct('batch_no')
+            ->count('batch_no');
 
         return $count >= $requiredCount;
     }
