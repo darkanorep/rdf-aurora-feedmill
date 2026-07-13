@@ -125,7 +125,7 @@ class ResponseService
         // Resolve once, from the full response set — not from a checklist's
         // current-period batches, which may legitimately be empty while last
         // month's data still exists and should be checked.
-        $userId = data_get($responses->first(), 'user_id');
+        $userId = data_get($responses->first()->user_id, 'user_id');
 
         return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount, $userId) {
             $checklistBatches = $batches->where('checklist_id', $checklist->id);
@@ -410,7 +410,7 @@ class ResponseService
 
         $previousMonth = Carbon::create($year, $month, 1)->subMonth();
 
-        $count = Response::where('user_id', auth()->user()->id)
+        $count = Response::where('user_id', $userId)
             ->where('checklist_id', $checklistId)
             ->where('is_completed', true)
             ->whereMonth('start_at', $previousMonth->month)
