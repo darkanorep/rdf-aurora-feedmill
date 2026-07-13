@@ -410,12 +410,11 @@ class ResponseService
 
         $previousMonth = Carbon::create($year, $month, 1)->subMonth();
 
-        $count = Response::where('user_id', $userId)
-            ->where('checklist_id', $checklistId)
-            ->where('is_completed', true)
-            ->whereYear('start_at', $previousMonth->year)
+        $count = Response::where('user_id', auth()->id())
+            ->where('checklist_id', $checklistId) ->where('is_completed', true)
             ->whereMonth('start_at', $previousMonth->month)
-            ->distinct()
+            ->whereYear('start_at', $previousMonth->year)
+            ->distinct('batch_no')
             ->count('batch_no');
 
         return $count >= $requiredCount;
