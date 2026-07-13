@@ -403,15 +403,16 @@ class ResponseService
             "{$imageFieldName}_image" => $record->images->pluck('url')->first(),
         ];
     }
-    private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount)
+    private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount): bool
     {
         $year = (int) request()->input('year', now()->year);
         $month = (int) request()->input('month', now()->month);
 
         $previousMonth = Carbon::create($year, $month, 1)->subMonth();
 
-        $count = Response::where('user_id', auth()->id())
-            ->where('checklist_id', $checklistId) ->where('is_completed', true)
+        $count = Response::where('user_id', auth()->user()->id)
+            ->where('checklist_id', $checklistId)
+            ->where('is_completed', true)
             ->whereMonth('start_at', $previousMonth->month)
             ->whereYear('start_at', $previousMonth->year)
             ->distinct('batch_no')
