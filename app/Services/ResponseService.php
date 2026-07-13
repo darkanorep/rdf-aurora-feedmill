@@ -51,6 +51,64 @@ class ResponseService
             return $this->formatUnitResponse($unit, $batchesByUnit);
         });
     }
+//    public function formatPestAndBirdsResponses($responses, $section) {
+//        $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
+//            return $this->formatBatchResponse($batchResponses, $batchNo);
+//        })->values();
+//
+//        $checklists = Section::query()
+//            ->with(['checkLists'])
+//            ->where('name', $section)
+//            ->first()
+//            ?->checkLists ?? collect();
+//
+//        $requiredCount = $section === 'birds' ? 4 : 2;
+//
+//        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount) {
+//            $checklistBatches = $batches->where('checklist_id', $checklist->id);
+//
+//            if ($section === 'birds') {
+//                $periods = ['Period 1' => [], 'Period 2' => [], 'Period 3' => [], 'Period 4' => []];
+//                foreach ($checklistBatches as $batch) {
+//                    $day = Carbon::parse($batch['start_at'])->day;
+//                    $periods[match (true) {
+//                        $day <= 7  => 'Period 1',
+//                        $day <= 14 => 'Period 2',
+//                        $day <= 21 => 'Period 3',
+//                        default    => 'Period 4',
+//                    }][] = $batch;
+//                }
+//                $periods = array_map(fn($p) => collect($p)->values(), $periods);
+//
+//                // Extract Inspection Areas from the checklist's items JSON column
+//                $inspectionAreas = collect($checklist->items)
+//                    ->firstWhere('name', 'Inspection Areas')['items'] ?? [];
+//            } else {
+//                $periods = [
+//                    'Period 1' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day <= 15)->values(),
+//                    'Period 2' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day > 15)->values(),
+//                ];
+//            }
+//
+//            $userId = $checklistBatches->first()['user_id'] ?? null;
+//            $previousMonthCompleted = $userId
+//                ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
+//                : null;
+//
+//            return [
+//                $checklist->checklist_name => [
+//                    'id'                       => $checklist->id,
+//                    'checklist_name'           => $checklist->checklist_name,
+//                    'created_at'               => Carbon::parse($checklist->created_at)->format('Y-m-d'),
+//                    'previous_month_completed' => $previousMonthCompleted,
+//                    'periods'                  => $periods,
+//                    ...($section === 'birds' ? ['inspection_areas' => $inspectionAreas] : []),
+//                ],
+//            ];
+//        });
+//    }
+
+
     public function formatPestAndBirdsResponses($responses, $section) {
         $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
             return $this->formatBatchResponse($batchResponses, $batchNo);
@@ -64,7 +122,12 @@ class ResponseService
 
         $requiredCount = $section === 'birds' ? 4 : 2;
 
-        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount) {
+        // Resolve once, from the full response set — not from a checklist's
+        // current-period batches, which may legitimately be empty while last
+        // month's data still exists and should be checked.
+        $userId = data_get($responses->first(), 'user_id');
+
+        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount, $userId) {
             $checklistBatches = $batches->where('checklist_id', $checklist->id);
 
             if ($section === 'birds') {
@@ -80,7 +143,6 @@ class ResponseService
                 }
                 $periods = array_map(fn($p) => collect($p)->values(), $periods);
 
-                // Extract Inspection Areas from the checklist's items JSON column
                 $inspectionAreas = collect($checklist->items)
                     ->firstWhere('name', 'Inspection Areas')['items'] ?? [];
             } else {
@@ -90,7 +152,6 @@ class ResponseService
                 ];
             }
 
-            $userId = $checklistBatches->first()['user_id'] ?? null;
             $previousMonthCompleted = $userId
                 ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
                 : null;
