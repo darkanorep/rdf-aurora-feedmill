@@ -404,7 +404,11 @@ class ResponseService
         ];
     }
     private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount) {
-        $previousMonth = Carbon::createFromDate(request()->input('year'), request()->input('month'), 1)->subMonth();
+        $previousMonth = Carbon::createFromDate(
+            request()->input('year', now()->year),
+            request()->input('month', now()->month),
+            1
+        )->subMonth();
 
         $count = Response::where('user_id', auth()->id())
             ->where('checklist_id', $checklistId)
