@@ -125,7 +125,7 @@ class ResponseService
         // Resolve once, from the full response set — not from a checklist's
         // current-period batches, which may legitimately be empty while last
         // month's data still exists and should be checked.
-        $userId = data_get($responses->first()->user_id, auth()->user()->id);
+        $userId = data_get($responses->first(), 'user_id');
 
         return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount, $userId) {
             $checklistBatches = $batches->where('checklist_id', $checklist->id);
