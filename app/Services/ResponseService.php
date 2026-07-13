@@ -125,7 +125,7 @@ class ResponseService
         // Resolve once, from the full response set — not from a checklist's
         // current-period batches, which may legitimately be empty while last
         // month's data still exists and should be checked.
-        $userId = data_get($responses->first(), 'user_id');
+        $userId = data_get($responses->first(), 'user_id') ?? auth()->id();
 
         return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount, $userId) {
             $checklistBatches = $batches->where('checklist_id', $checklist->id);
@@ -152,7 +152,9 @@ class ResponseService
             }
 
 
-            $previousMonthCompleted = $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount);
+            $previousMonthCompleted = $userId
+                ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
+                : null;
 
             return [
                 $checklist->checklist_name => [
@@ -403,28 +405,24 @@ class ResponseService
             "{$imageFieldName}_image" => $record->images->pluck('url')->first(),
         ];
     }
-    private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount): bool
+    private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount): ?bool
     {
+        if (!$userId || !$checklistId) {
+            return null;
+        }
+
         $year = (int) request()->input('year', now()->year);
         $month = (int) request()->input('month', now()->month);
 
         $previousMonth = Carbon::create($year, $month, 1)->subMonth();
 
-//        $count = Response::where('user_id', $userId)
-//            ->where('checklist_id', $checklistId)
-//            ->where('is_completed', true)
-//            ->whereMonth('start_at', $previousMonth->month)
-//            ->whereYear('start_at', $previousMonth->year)
-//            ->distinct('batch_no')
-//            ->count('batch_no');
-
-        $count = DB::table('responses')
-            ->where('user_id', $userId)
-            ->where('checklist_id', $checklistId)
+        $count = Response::
+//        where('user_id', $userId)
+            where('checklist_id', $checklistId)
             ->where('is_completed', true)
             ->whereMonth('start_at', $previousMonth->month)
             ->whereYear('start_at', $previousMonth->year)
-            ->distinct('batch_no')
+            ->distinct()              // <-- no argument: standard "distinct count" idiom
             ->count('batch_no');
 
         return $count >= $requiredCount;
