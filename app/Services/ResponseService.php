@@ -681,22 +681,72 @@ class ResponseService
     {
         return $this->imageKit;
     }
-    public function mergeResponse($data) {
-        $month = $data['month'] ?? null;
-        $year = $data['year'] ?? null;
-//        $startAt = $data['start_at'] ?? Carbon::now();
-//        $endAt = $data['end_at'] ?? $startAt;
 
-        $this->response
-            ->onlyTrashed() // Only soft-deleted records
-            ->whereYear('start_at', $year)
-            ->whereMonth('start_at', $month)
-            ->update([
-//                'start_at' => $startAt,
-//                'end_at' => $endAt,
-                'deleted_at' => null, // Restore by clearing deleted_at
-            ]);
+    public function mergeResponse(array $data): void
+    {
+        $month = (int) ($data['month'] ?? 0);
+        $year  = (int) ($data['year'] ?? 0);
+
+        if ($month < 1 || $month > 12 || $year < 1970) {
+            return;
+        }
+
+        $completedCobsResponses = $this->response
+            ->cobs()
+            ->completed()
+            ->inThirdWeekOf($month, $year)
+            ->get(['id', 'batch_no']);
+
+        if ($completedCobsResponses->isEmpty()) {
+            return;
+        }
+
+        $batchNos = $completedCobsResponses->pluck('batch_no')->unique();
+
+        DB::transaction(function () use ($batchNos) {
+            $responsesToCopy = $this->response
+                ->whereIn('batch_no', $batchNos)
+                ->with('images')
+                ->get();
+
+            if ($responsesToCopy->isEmpty()) {
+                return;
+            }
+
+            $newBatchNo = $this->generateBatchNo();
+
+            $responsesToCopy->each(function (Response $response) use ($newBatchNo) {
+                $copy = $response->replicate();
+
+                $copy->batch_no = $newBatchNo;
+                $copy->start_at = Carbon::parse($response->start_at)->addDays(7);
+                $copy->end_at   = $response->end_at
+                    ? Carbon::parse($response->end_at)->addDays(7)
+                    : null;
+
+                $copy->save();
+
+                $response->images->each(function (Image $image) use ($copy) {
+                    $imageCopy = $image->replicate();
+                    $imageCopy->response_id = $copy->id;
+                    $imageCopy->save();
+                });
+            });
+        });
     }
+
+//    public function mergeResponse($data) {
+//        $month = $data['month'] ?? null;
+//        $year = $data['year'] ?? null;
+//
+//        $this->response
+//            ->onlyTrashed() // Only soft-deleted records
+//            ->whereYear('start_at', $year)
+//            ->whereMonth('start_at', $month)
+//            ->update([
+//                'deleted_at' => null, // Restore by clearing deleted_at
+//            ]);
+//    }
     protected function resolveEvaluatorId(?int $checklistId): ?int
     {
         if (! $checklistId) {

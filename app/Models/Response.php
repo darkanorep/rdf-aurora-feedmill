@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Filters\ResponseFilter;
+use Carbon\Carbon;
 use Essa\APIToolKit\Filters\Filterable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -46,6 +47,27 @@ class Response extends Model
 
     public function images() {
         return $this->hasMany(Image::class);
+    }
+
+    public function scopeCobs($query)
+    {
+        return $query->whereHas('checklist.section', fn ($q) => $q->where('name', 'COBS'));
+    }
+
+    public function scopeCompleted($query)
+    {
+        return $query->where('is_completed', true);
+    }
+
+    /**
+     * "Third week" = calendar days 15–21 of the given month/year.
+     */
+    public function scopeInThirdWeekOf($query, int $month, int $year)
+    {
+        return $query->whereBetween('start_at', [
+            Carbon::create($year, $month, 15)->startOfDay(),
+            Carbon::create($year, $month, 21)->endOfDay(),
+        ]);
     }
 
     public function section() {
