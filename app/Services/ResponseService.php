@@ -51,63 +51,6 @@ class ResponseService
             return $this->formatUnitResponse($unit, $batchesByUnit);
         });
     }
-//    public function formatPestAndBirdsResponses($responses, $section) {
-//        $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
-//            return $this->formatBatchResponse($batchResponses, $batchNo);
-//        })->values();
-//
-//        $checklists = Section::query()
-//            ->with(['checkLists'])
-//            ->where('name', $section)
-//            ->first()
-//            ?->checkLists ?? collect();
-//
-//        $requiredCount = $section === 'birds' ? 4 : 2;
-//
-//        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount) {
-//            $checklistBatches = $batches->where('checklist_id', $checklist->id);
-//
-//            if ($section === 'birds') {
-//                $periods = ['Period 1' => [], 'Period 2' => [], 'Period 3' => [], 'Period 4' => []];
-//                foreach ($checklistBatches as $batch) {
-//                    $day = Carbon::parse($batch['start_at'])->day;
-//                    $periods[match (true) {
-//                        $day <= 7  => 'Period 1',
-//                        $day <= 14 => 'Period 2',
-//                        $day <= 21 => 'Period 3',
-//                        default    => 'Period 4',
-//                    }][] = $batch;
-//                }
-//                $periods = array_map(fn($p) => collect($p)->values(), $periods);
-//
-//                // Extract Inspection Areas from the checklist's items JSON column
-//                $inspectionAreas = collect($checklist->items)
-//                    ->firstWhere('name', 'Inspection Areas')['items'] ?? [];
-//            } else {
-//                $periods = [
-//                    'Period 1' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day <= 15)->values(),
-//                    'Period 2' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day > 15)->values(),
-//                ];
-//            }
-//
-//            $userId = $checklistBatches->first()['user_id'] ?? null;
-//            $previousMonthCompleted = $userId
-//                ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
-//                : null;
-//
-//            return [
-//                $checklist->checklist_name => [
-//                    'id'                       => $checklist->id,
-//                    'checklist_name'           => $checklist->checklist_name,
-//                    'created_at'               => Carbon::parse($checklist->created_at)->format('Y-m-d'),
-//                    'previous_month_completed' => $previousMonthCompleted,
-//                    'periods'                  => $periods,
-//                    ...($section === 'birds' ? ['inspection_areas' => $inspectionAreas] : []),
-//                ],
-//            ];
-//        });
-//    }
-
 
     public function formatPestAndBirdsResponses($responses, $section) {
         $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
@@ -177,10 +120,10 @@ class ResponseService
         // Get first batch to extract user and checklist info
         $firstBatch = $unitBatches->first();
         $userId = $firstBatch?->user_id ?? null;
-        $checklistId = $unit->checkLists ?? null;
 
         // Check previous month completion for cobs (required: 4 times)
-        $previousMonthCompleted = $this->checkPreviousMonthCompleted($userId, $checklistId, 4);
+        $previousMonthCompleted =  $this->checkPreviousMonthCompleted($userId, data_get($unit->checkLists->first(), 'id'), 4);
+
 
         return [
             'Unit: ' . $unit->name => [
@@ -223,29 +166,29 @@ class ResponseService
             $this->imageKit
         );
 
-        if ($sectionName === 'cobs' && $this->isThirdWeek($data['start_at'] ?? null)) {
-            $fourthWeekData = $data;
-            $fourthWeekData['start_at'] = Carbon::parse($data['start_at'])->addWeeks(1);
-            $fourthWeekData['end_at'] = $fourthWeekData['start_at'];
-
-            $newBatchNo = $this->generateBatchNo();
-            $baseResponseData4thWeek = $this->buildBaseResponseData($fourthWeekData, $newBatchNo, $sectionName);
-
-            DB::transaction(function () use ($data, $baseResponseData4thWeek) {
-                $this->processResponseBatch(
-                    $data['response'] ?? [],
-                    $data['image'] ?? $data['images'] ?? [],
-                    'response',
-                    $baseResponseData4thWeek,
-                    $this->imageKit
-                );
-
-                $this->response->where('batch_no', $baseResponseData4thWeek['batch_no'])
-                    ->whereMonth('start_at', Carbon::parse($baseResponseData4thWeek['start_at'])->month)
-                    ->whereDay('start_at', '>=', 22)
-                    ->delete();
-            });
-        }
+//        if ($sectionName === 'cobs' && $this->isThirdWeek($data['start_at'] ?? null)) {
+//            $fourthWeekData = $data;
+//            $fourthWeekData['start_at'] = Carbon::parse($data['start_at'])->addWeeks(1);
+//            $fourthWeekData['end_at'] = $fourthWeekData['start_at'];
+//
+//            $newBatchNo = $this->generateBatchNo();
+//            $baseResponseData4thWeek = $this->buildBaseResponseData($fourthWeekData, $newBatchNo, $sectionName);
+//
+//            DB::transaction(function () use ($data, $baseResponseData4thWeek) {
+//                $this->processResponseBatch(
+//                    $data['response'] ?? [],
+//                    $data['image'] ?? $data['images'] ?? [],
+//                    'response',
+//                    $baseResponseData4thWeek,
+//                    $this->imageKit
+//                );
+//
+//                $this->response->where('batch_no', $baseResponseData4thWeek['batch_no'])
+//                    ->whereMonth('start_at', Carbon::parse($baseResponseData4thWeek['start_at'])->month)
+//                    ->whereDay('start_at', '>=', 22)
+//                    ->delete();
+//            });
+//        }
     }
     private function isThirdWeek($startAt): bool
     {
@@ -335,17 +278,17 @@ class ResponseService
 
         // Add this logic for previous month completion
 
-        $requiredCount = match ($section) {
-            'cobs', 'birds' => 4,
-            'pests' => 2,
-            default => 0,
-        };
-
-        $previousMonthCompleted = $this->checkPreviousMonthCompleted(
-            $firstResponse?->user_id,
-            $firstResponse?->checklist_id,
-            $requiredCount
-        );
+//        $requiredCount = match ($section) {
+//            'cobs', 'birds' => 4,
+//            'pests' => 2,
+//            default => 0,
+//        };
+//
+//        $previousMonthCompleted = $this->checkPreviousMonthCompleted(
+//            $firstResponse?->user_id,
+//            $firstResponse?->checklist_id,
+//            $requiredCount
+//        );
 
         return [
             'batch_no' => (int) $batchNo,
@@ -385,7 +328,7 @@ class ResponseService
             'signatory_1' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
             'signatory_2' => $signatory2,
             'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
-            'previous_month_completed' => $previousMonthCompleted,
+//            'previous_month_completed' => $previousMonthCompleted,
             'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
         ];
     }
