@@ -407,9 +407,9 @@ class ResponseService
     }
     private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount): ?bool
     {
-        if (!$userId || !$checklistId) {
-            return null;
-        }
+//        if (!$userId || !$checklistId) {
+//            return null;
+//        }
 
         $year = (int) request()->input('year', now()->year);
         $month = (int) request()->input('month', now()->month);
