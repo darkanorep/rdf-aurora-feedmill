@@ -31,6 +31,11 @@ class Checklist extends Model
         return $this->belongsToJson(Unit::class, 'unit_ids')->withTrashed();
     }
 
+    public function responses()
+    {
+        return $this->hasMany(Response::class, 'checklist_id');
+    }
+
 //    public function inspectionAreas() {
 //        return $this->belongsToJson(InspectionArea::class, 'inspection_area_ids')->withTrashed();
 //    }
