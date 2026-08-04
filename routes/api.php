@@ -35,6 +35,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::resource('sections', SectionController::class);
         Route::resource('permissions', PermissionController::class);
         Route::resource('roles', RoleController::class);
+        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword']);
         Route::resource('users', UserController::class);
         Route::resource('inspection-areas', InspectionAreaController::class);
         Route::resource('pests', PestController::class);
@@ -95,4 +96,5 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::resource('assess', AssessController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
+    Route::put('change-password', [AuthController::class, 'changePassword']);
 });

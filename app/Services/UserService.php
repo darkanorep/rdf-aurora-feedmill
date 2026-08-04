@@ -71,6 +71,10 @@ class UserService
         ]);
     }
 
+    public function resetPassword(User $user) {
+        $this->getUserById($user->id)->update(['password' => Hash::make($user->username)]);
+    }
+
     public function truncateUsers() {
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
         DB::table('users')->truncate();

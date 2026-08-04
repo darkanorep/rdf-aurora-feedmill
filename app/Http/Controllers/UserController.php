@@ -58,6 +58,17 @@ class UserController extends Controller
         return $this->responseSuccess('Updated Successfully', new UserResource($updatedUser));
     }
 
+    public function resetPassword($id) {
+        $user = $this->userService->getUserById($id);
+        if (!$user) {
+            return $this->responseNotFound('User not found.');
+        }
+
+        $this->userService->resetPassword($user);
+
+        return $this->responseSuccess('Password reset successfully.');
+    }
+
     public function evaluators() {
         return $this->userService->getUsersByRole('evaluator', 'Evaluator');
     }
