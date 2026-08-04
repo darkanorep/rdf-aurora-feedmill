@@ -35,18 +35,6 @@ class ChecklistRequest extends FormRequest
                 'array',
                 'exists:units,id'
             ],
-//            'inspection_area_ids' => [
-//                Rule::requiredIf(fn() => in_array(
-//                    Section::find($this->input('section_id'))?->name,
-//                    [Section::PESTS, Section::BIRDS]
-//                )),
-//            ],
-//            'infestation_level_ids' => [
-//                Rule::requiredIf(fn() => in_array(
-//                    Section::find($this->input('section_id'))?->name,
-//                    [Section::BIRDS]
-//                )),
-//            ]
         ];
     }
 

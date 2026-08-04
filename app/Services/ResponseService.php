@@ -370,56 +370,156 @@ class ResponseService
 
         return $count >= $requiredCount;
     }
-    private function computeHierarchicalScore($firstResponse, $batchResponses) {
+//    private function computeHierarchicalScore($firstResponse, $batchResponses) {
+//        $checklist = $firstResponse?->checklist;
+//        if (!$checklist) {
+//            return ['score' => 0, 'breakdown' => []];
+//        }
+//
+//        // Convert items to array (handles Collection, array, or JSON string)
+//        $categories = $this->ensureArray($checklist->items ?? []);
+//
+//        if (empty($categories)) {
+//            return ['score' => 0, 'breakdown' => []];
+//        }
+//
+//        $totalScore = 0;
+//        $totalPossibleScore = 0;
+//        $categoryCount = count($categories);
+//        $breakdown = [];
+//
+//        // Iterate through each category (e.g., CLEANLINESS, BIOSECURITY)
+//        foreach ($categories as $categoryIndex => $category) {
+//            $categoryName = $category['name'] ?? "Category $categoryIndex";
+//            $categoryItems = $category['items'] ?? []; // Items in category (e.g., Front Gate, UV Cabinets)
+//            $itemCount = count($categoryItems);
+//
+//            if ($itemCount === 0) continue;
+//
+//            $categoryWeight = 1 / $categoryCount; // Each category gets equal weight
+//            $categoryScore = 0;
+//            $categoryPossibleScore = 0;
+//            $itemsBreakdown = [];
+//
+//            // Iterate through items in category
+//            foreach ($categoryItems as $itemIndex => $item) {
+//                $itemName = $item['name'] ?? "Item $itemIndex";
+//                $subItems = $item['sub_items'] ?? []; // Sub-items (actual questions)
+//                $subItemCount = count($subItems);
+//
+//                if ($subItemCount === 0) continue;
+//
+//                $itemWeight = 1 / $itemCount; // Equal weight per item in category
+//                $itemScore = 0;
+//                $itemPossibleScore = 0;
+//                $subItemsBreakdown = [];
+//
+//                // Iterate through sub-items
+//                foreach ($subItems as $subItemIndex => $subItem) {
+//                    $subItemName = $subItem['name'] ?? "Sub-item $subItemIndex";
+//                    $subItemWeight = 1 / $subItemCount; // Equal weight per sub-item
+//
+//                    // Find response for this specific path: category → item → sub-item
+//                    $responseValue = $this->findResponseValue(
+//                        $batchResponses,
+//                        $categoryIndex,
+//                        $itemIndex,
+//                        $subItemIndex
+//                    );
+//
+//                    // Normalize to 0-1 scale (response values: 0, 25, 50, 75, 100)
+//                    $normalizedValue = is_numeric($responseValue) ? ($responseValue / 100) : 0;
+//
+//                    // Score contribution: category_weight × item_weight × sub_item_weight × response_value
+//                    $subItemScore = $categoryWeight * $itemWeight * $subItemWeight * $normalizedValue;
+//                    $subItemPossibleScore = $categoryWeight * $itemWeight * $subItemWeight;
+//
+//                    $itemScore += $subItemScore;
+//                    $itemPossibleScore += $subItemPossibleScore;
+//                    $totalScore += $subItemScore;
+//                    $totalPossibleScore += $subItemPossibleScore;
+//
+//                    // Calculate sub-item percentage contribution
+//                    // Base allocation: (1 / subItemCount) * 100
+//                    // Actual contribution: base allocation * normalized response value
+//                    $subItemBasePercentage = ($subItemWeight * 100);
+//                    $subItemContributionPercentage = $subItemBasePercentage * $normalizedValue;
+//
+//                    $subItemsBreakdown[] = [
+//                        'name' => $subItemName,
+//                        'score' => (int) $responseValue,
+//                        'allocation' => $subItemBasePercentage,
+//                        'percentage' => round($subItemContributionPercentage, 2),
+//                    ];
+//                }
+//
+//                // Calculate item percentage
+//                $itemPercentage = $itemPossibleScore > 0 ? round(($itemScore / $itemPossibleScore) * 100, 2) : 0;
+//                $itemBaseAllocation = ($itemWeight * 100);
+//                $categoryScore += $itemScore;
+//                $categoryPossibleScore += $itemPossibleScore;
+//
+//                $itemsBreakdown[] = [
+//                    'name' => $itemName,
+//                    'score' => $itemPercentage,
+//                    'allocation' => $itemBaseAllocation,
+//                    'percentage' => $itemPercentage,
+//                    'sub_items' => $subItemsBreakdown,
+//                ];
+//            }
+//
+//            // Calculate category percentage
+//            $categoryPercentage = $categoryPossibleScore > 0 ? round(($categoryScore / $categoryPossibleScore) * 100, 2) : 0;
+//
+//            $breakdown[] = [
+//                'category' => $categoryName,
+//                'score' => (round($categoryWeight * 100, 2) / 100) * $categoryPercentage,
+//                'percentage' => $categoryPercentage,
+//                'allocation' => round($categoryWeight * 100, 2),
+//                'items' => $itemsBreakdown,
+//            ];
+//        }
+//
+//        // Return total score and breakdown
+//        $totalScore = $totalPossibleScore > 0 ? round(($totalScore / $totalPossibleScore) * 100, 2) : 0;
+//
+//        return [
+//            'score' => $totalScore,
+//            'breakdown' => $breakdown,
+//        ];
+//    }
+
+    private function computeHierarchicalScore($firstResponse, $batchResponses)
+    {
         $checklist = $firstResponse?->checklist;
         if (!$checklist) {
             return ['score' => 0, 'breakdown' => []];
         }
 
-        // Convert items to array (handles Collection, array, or JSON string)
         $categories = $this->ensureArray($checklist->items ?? []);
-
         if (empty($categories)) {
             return ['score' => 0, 'breakdown' => []];
         }
 
-        $totalScore = 0;
-        $totalPossibleScore = 0;
-        $categoryCount = count($categories);
-        $breakdown = [];
+        // ---- Phase 1: resolve responses & filter out N/A (score <= 0) entries ----
+        // Weights must be computed from *scorable* counts, so we build a filtered
+        // tree first rather than skipping mid-loop (which would silently shrink
+        // the denominator without redistributing weight correctly).
+        $filteredCategories = [];
 
-        // Iterate through each category (e.g., CLEANLINESS, BIOSECURITY)
         foreach ($categories as $categoryIndex => $category) {
             $categoryName = $category['name'] ?? "Category $categoryIndex";
-            $categoryItems = $category['items'] ?? []; // Items in category (e.g., Front Gate, UV Cabinets)
-            $itemCount = count($categoryItems);
+            $categoryItems = $category['items'] ?? [];
+            $filteredItems = [];
 
-            if ($itemCount === 0) continue;
-
-            $categoryWeight = 1 / $categoryCount; // Each category gets equal weight
-            $categoryScore = 0;
-            $categoryPossibleScore = 0;
-            $itemsBreakdown = [];
-
-            // Iterate through items in category
             foreach ($categoryItems as $itemIndex => $item) {
                 $itemName = $item['name'] ?? "Item $itemIndex";
-                $subItems = $item['sub_items'] ?? []; // Sub-items (actual questions)
-                $subItemCount = count($subItems);
+                $subItems = $item['sub_items'] ?? [];
+                $filteredSubItems = [];
 
-                if ($subItemCount === 0) continue;
-
-                $itemWeight = 1 / $itemCount; // Equal weight per item in category
-                $itemScore = 0;
-                $itemPossibleScore = 0;
-                $subItemsBreakdown = [];
-
-                // Iterate through sub-items
                 foreach ($subItems as $subItemIndex => $subItem) {
                     $subItemName = $subItem['name'] ?? "Sub-item $subItemIndex";
-                    $subItemWeight = 1 / $subItemCount; // Equal weight per sub-item
 
-                    // Find response for this specific path: category → item → sub-item
                     $responseValue = $this->findResponseValue(
                         $batchResponses,
                         $categoryIndex,
@@ -427,10 +527,69 @@ class ResponseService
                         $subItemIndex
                     );
 
-                    // Normalize to 0-1 scale (response values: 0, 25, 50, 75, 100)
-                    $normalizedValue = is_numeric($responseValue) ? ($responseValue / 100) : 0;
+                    // 0 (or missing/non-numeric) == N/A on the frontend -> exclude
+                    // entirely from both scoring and the item/sub-item counts.
+                    if (!is_numeric($responseValue) || (float) $responseValue <= 0) {
+                        continue;
+                    }
 
-                    // Score contribution: category_weight × item_weight × sub_item_weight × response_value
+                    $filteredSubItems[] = [
+                        'name'  => $subItemName,
+                        'value' => (float) $responseValue,
+                    ];
+                }
+
+                // Item had sub-items, but all were N/A -> drop the whole item.
+                if (empty($filteredSubItems)) {
+                    continue;
+                }
+
+                $filteredItems[] = [
+                    'name'      => $itemName,
+                    'sub_items' => $filteredSubItems,
+                ];
+            }
+
+            // Category had items, but none survived filtering -> drop it.
+            if (empty($filteredItems)) {
+                continue;
+            }
+
+            $filteredCategories[] = [
+                'name'  => $categoryName,
+                'items' => $filteredItems,
+            ];
+        }
+
+        if (empty($filteredCategories)) {
+            // Every single item was N/A — nothing to score.
+            return ['score' => 0, 'breakdown' => []];
+        }
+
+        // ---- Phase 2: weighted scoring, using filtered counts as denominators ----
+        $totalScore = 0;
+        $totalPossibleScore = 0;
+        $categoryCount = count($filteredCategories);
+        $breakdown = [];
+
+        foreach ($filteredCategories as $category) {
+            $categoryWeight = 1 / $categoryCount;
+            $itemCount = count($category['items']);
+            $categoryScore = 0;
+            $categoryPossibleScore = 0;
+            $itemsBreakdown = [];
+
+            foreach ($category['items'] as $item) {
+                $itemWeight = 1 / $itemCount;
+                $subItemCount = count($item['sub_items']);
+                $itemScore = 0;
+                $itemPossibleScore = 0;
+                $subItemsBreakdown = [];
+
+                foreach ($item['sub_items'] as $subItem) {
+                    $subItemWeight = 1 / $subItemCount;
+                    $normalizedValue = $subItem['value'] / 100;
+
                     $subItemScore = $categoryWeight * $itemWeight * $subItemWeight * $normalizedValue;
                     $subItemPossibleScore = $categoryWeight * $itemWeight * $subItemWeight;
 
@@ -439,52 +598,52 @@ class ResponseService
                     $totalScore += $subItemScore;
                     $totalPossibleScore += $subItemPossibleScore;
 
-                    // Calculate sub-item percentage contribution
-                    // Base allocation: (1 / subItemCount) * 100
-                    // Actual contribution: base allocation * normalized response value
-                    $subItemBasePercentage = ($subItemWeight * 100);
+                    $subItemBasePercentage = $subItemWeight * 100;
                     $subItemContributionPercentage = $subItemBasePercentage * $normalizedValue;
 
                     $subItemsBreakdown[] = [
-                        'name' => $subItemName,
-                        'score' => (int) $responseValue,
+                        'name'       => $subItem['name'],
+                        'score'      => (int) $subItem['value'],
                         'allocation' => $subItemBasePercentage,
                         'percentage' => round($subItemContributionPercentage, 2),
                     ];
                 }
 
-                // Calculate item percentage
-                $itemPercentage = $itemPossibleScore > 0 ? round(($itemScore / $itemPossibleScore) * 100, 2) : 0;
-                $itemBaseAllocation = ($itemWeight * 100);
+                $itemPercentage = $itemPossibleScore > 0
+                    ? round(($itemScore / $itemPossibleScore) * 100, 2)
+                    : 0;
+                $itemBaseAllocation = $itemWeight * 100;
                 $categoryScore += $itemScore;
                 $categoryPossibleScore += $itemPossibleScore;
 
                 $itemsBreakdown[] = [
-                    'name' => $itemName,
-                    'score' => $itemPercentage,
+                    'name'       => $item['name'],
+                    'score'      => $itemPercentage,
                     'allocation' => $itemBaseAllocation,
                     'percentage' => $itemPercentage,
-                    'sub_items' => $subItemsBreakdown,
+                    'sub_items'  => $subItemsBreakdown,
                 ];
             }
 
-            // Calculate category percentage
-            $categoryPercentage = $categoryPossibleScore > 0 ? round(($categoryScore / $categoryPossibleScore) * 100, 2) : 0;
+            $categoryPercentage = $categoryPossibleScore > 0
+                ? round(($categoryScore / $categoryPossibleScore) * 100, 2)
+                : 0;
 
             $breakdown[] = [
-                'category' => $categoryName,
-                'score' => (round($categoryWeight * 100, 2) / 100) * $categoryPercentage,
+                'category'   => $category['name'],
+                'score'      => (round($categoryWeight * 100, 2) / 100) * $categoryPercentage,
                 'percentage' => $categoryPercentage,
                 'allocation' => round($categoryWeight * 100, 2),
-                'items' => $itemsBreakdown,
+                'items'      => $itemsBreakdown,
             ];
         }
 
-        // Return total score and breakdown
-        $totalScore = $totalPossibleScore > 0 ? round(($totalScore / $totalPossibleScore) * 100, 2) : 0;
+        $totalScore = $totalPossibleScore > 0
+            ? round(($totalScore / $totalPossibleScore) * 100, 2)
+            : 0;
 
         return [
-            'score' => $totalScore,
+            'score'     => $totalScore,
             'breakdown' => $breakdown,
         ];
     }
@@ -678,18 +837,6 @@ class ResponseService
         });
     }
 
-//    public function mergeResponse($data) {
-//        $month = $data['month'] ?? null;
-//        $year = $data['year'] ?? null;
-//
-//        $this->response
-//            ->onlyTrashed() // Only soft-deleted records
-//            ->whereYear('start_at', $year)
-//            ->whereMonth('start_at', $month)
-//            ->update([
-//                'deleted_at' => null, // Restore by clearing deleted_at
-//            ]);
-//    }
     protected function resolveEvaluatorId(?int $checklistId): ?int
     {
         if (! $checklistId) {

@@ -31,6 +31,7 @@ class UserRequest extends FormRequest
             'position' => 'nullable|string|max:255',
             'username' => 'required|string|max:255|unique:users,username,' . $this->route('user'),
             'password' => 'nullable|string',
+            'signature' => 'nullable',
         ];
     }
 }
