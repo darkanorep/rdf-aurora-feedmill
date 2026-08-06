@@ -312,7 +312,7 @@ class ResponseService
             'is_approved' => $firstResponse?->is_approved,
             'is_assessed' => $firstResponse?->is_assessed,
             'good_points' => $firstResponse?->good_points,
-            'remarks' => $firstResponse?->remarks,
+            'remarks' => $firstResponse?->duplicate_reason ?: $firstResponse?->remarks,
             'notes' => $firstResponse?->notes,
             'temporal_audit' => $firstResponse?->temporal_audit,
             'start_at' => $startAt,

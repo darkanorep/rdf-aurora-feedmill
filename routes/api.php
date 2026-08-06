@@ -9,6 +9,7 @@ use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
 use App\Http\Controllers\MergeFormController;
 use App\Http\Controllers\ResponseController;
+use App\Http\Controllers\ResponseDuplicationController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\WastageController;
 use Illuminate\Support\Facades\Route;
@@ -82,7 +83,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('responses/summary', [ResponseController::class, 'summaryReportByBatchNo']);
     Route::post('responses/evaluate', [ResponseController::class, 'evaluateResponse']);
     Route::post('responses/assess', [ResponseController::class, 'assessResponse']);
-    Route::post('responses/merge', [ResponseController::class, 'mergeResponse']);
+//    Route::post('responses/merge', [ResponseController::class, 'mergeResponse']);
+    Route::post('responses/merge', [ResponseDuplicationController::class, 'store']);
     Route::resource('responses', ResponseController::class);
 
     //APPROVAL

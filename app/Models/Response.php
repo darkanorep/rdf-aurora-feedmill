@@ -6,6 +6,8 @@ use App\Filters\ResponseFilter;
 use Carbon\Carbon;
 use Essa\APIToolKit\Filters\Filterable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Response extends Model
@@ -79,5 +81,25 @@ class Response extends Model
             'checklist_id',
             'section_id'
         );
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_response_id');
+    }
+
+    public function duplicate(): HasOne
+    {
+        return $this->hasOne(self::class, 'parent_response_id');
+    }
+
+    public function isCompleted(): bool
+    {
+        return (bool) $this->is_completed;
+    }
+
+    public function hasDuplicate(): bool
+    {
+        return $this->duplicate()->exists();
     }
 }
