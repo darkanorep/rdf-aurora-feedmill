@@ -62,12 +62,12 @@ class ResponseController extends Controller
     {
         $this->responseService->additionalAttachment(
             $request->file('image'),
-            $request->input('batch_no')
+            $request->input('response_id')
         );
 
         return response()->json([
             'message' => 'Attachments uploaded successfully.',
-            'batch_no' => $request->input('batch_no'),
+            'response_id' => $request->input('response_id'),
         ]);
     }
     public function truncateResponse() {

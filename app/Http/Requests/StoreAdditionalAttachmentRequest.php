@@ -22,7 +22,7 @@ class StoreAdditionalAttachmentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'batch_no' => ['required', 'integer', 'exists:responses,batch_no', 'min:1'],
+            'response_id' => ['required', 'integer', 'exists:responses,id', 'min:1'],
             'image' => ['required'],
             'image.*' => ['image', 'mimes:jpeg,jpg,png', 'max:5120'],
         ];

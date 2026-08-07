@@ -33,12 +33,16 @@ class ResponseService
     public function getResponses($request) {
         $responses = $this->response->useFilters()->get();
         $section = $request->section;
+
+        $month = (int) ($request->month ?? Carbon::now()->month);
+        $year  = (int) ($request->year ?? Carbon::now()->year);
+
         return match ($section) {
             'pests', 'birds' => $this->formatPestAndBirdsResponses($responses, $section),
-            default => $this->formatCobsResponses($responses),
+            default => $this->formatCobsResponses($responses, $month, $year),
         };
     }
-    public function formatCobsResponses($responses) {
+    public function formatCobsResponses($responses, int $month, int $year) {
         $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
             return $this->formatBatchResponse($batchResponses, $batchNo);
         })->values();
@@ -46,9 +50,9 @@ class ResponseService
         $batchesByUnit = $batches->groupBy('unit_id');
 
         return Unit::query()->with([
-            'checkLists' => fn ($query) => $query->withoutTrashed()  // ← Add this
-        ])->get()->mapWithKeys(function ($unit) use ($batchesByUnit) {
-            return $this->formatUnitResponse($unit, $batchesByUnit);
+            'checkLists' => fn ($query) => $query->withoutTrashed()
+        ])->get()->mapWithKeys(function ($unit) use ($batchesByUnit, $month, $year) {
+            return $this->formatUnitResponse($unit, $batchesByUnit, $month, $year);
         });
     }
     public function formatPestAndBirdsResponses($responses, $section) {
@@ -110,7 +114,7 @@ class ResponseService
             ];
         });
     }
-    private function formatUnitResponse($unit, $batchesByUnit) {
+    private function formatUnitResponse($unit, $batchesByUnit, int $month, int $year) {
         $unitBatches = $batchesByUnit->get($unit->id, collect());
         $batchesByWeek = $unitBatches->groupBy('week');
         $checklists = $unit->checkLists;
@@ -120,8 +124,10 @@ class ResponseService
         $userId = $firstBatch?->user_id ?? null;
 
         // Check previous month completion for cobs (required: 4 times)
-        $previousMonthCompleted =  $this->checkPreviousMonthCompleted($userId, data_get($unit->checkLists->first(), 'id'), 4);
+        $previousMonthCompleted = $this->checkPreviousMonthCompleted($userId, data_get($unit->checkLists->first(), 'id'), 4);
 
+        // Real number of weeks in the given calendar month (e.g. Feb 2026 = 4, most months = 4 or 5)
+        $weeksInMonth = Carbon::createFromDate($year, $month, 1)->endOfMonth()->weekOfMonth();
 
         return [
             'Unit: ' . $unit->name => [
@@ -134,7 +140,7 @@ class ResponseService
                         'created_at' => Carbon::parse($checklist->created_at)->format('Y-m-d'),
                     ];
                 })->values(),
-                'weeks' => collect(range(1, 4))->mapWithKeys(function ($week) use ($batchesByWeek) {
+                'weeks' => collect(range(1, $weeksInMonth))->mapWithKeys(function ($week) use ($batchesByWeek) {
                     return [
                         'Week ' . $week => $batchesByWeek->get($week, collect())->values()->all(),
                     ];
@@ -249,9 +255,6 @@ class ResponseService
 
         $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses);
         $signatory2 = $this->formatFieldData($batchResponses, 'approve', 'approve');
-        $additionalAttachments = Image::where('batch_no', $batchNo)
-            ->pluck('url')
-            ->values();
 
         return [
             'batch_no' => (int) $batchNo,
@@ -288,7 +291,6 @@ class ResponseService
                     'images' => $response->images->pluck('url'),
                 ];
             })->values(),
-            'additional_attachments' => $additionalAttachments,
             'signatory_1' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
             'signatory_2' => $signatory2,
             'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
@@ -702,10 +704,10 @@ class ResponseService
             ? strtolower($checklist->section->name)
             : null;
     }
-    public function additionalAttachment($images, int $batchNo): void
+    public function additionalAttachment($images, int $responseId): void
     {
-        if (empty($batchNo)) {
-            \Log::error('additionalAttachment called without a batch_no.');
+        if (empty($responseId)) {
+            \Log::error('additionalAttachment called without a response_id.');
             return;
         }
 
@@ -726,12 +728,12 @@ class ResponseService
                 $url = data_get($uploadFile, 'result.url');
                 if ($url) {
                     Image::create([
-                        'batch_no' => $batchNo,
+                        'response_id' => $responseId,
                         'url' => $url,
                     ]);
                 }
             } catch (\Exception $e) {
-                \Log::error('ImageKit upload failed (batch_no: ' . $batchNo . '): ' . $e->getMessage());
+                \Log::error('ImageKit upload failed (response_id: ' . $responseId . '): ' . $e->getMessage());
             }
         }
     }
