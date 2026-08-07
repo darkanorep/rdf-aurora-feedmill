@@ -51,7 +51,6 @@ class ResponseService
             return $this->formatUnitResponse($unit, $batchesByUnit);
         });
     }
-
     public function formatPestAndBirdsResponses($responses, $section) {
         $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
             return $this->formatBatchResponse($batchResponses, $batchNo);
@@ -111,7 +110,6 @@ class ResponseService
             ];
         });
     }
-
     private function formatUnitResponse($unit, $batchesByUnit) {
         $unitBatches = $batchesByUnit->get($unit->id, collect());
         $batchesByWeek = $unitBatches->groupBy('week');
@@ -165,30 +163,6 @@ class ResponseService
             $baseResponseData,
             $this->imageKit
         );
-
-//        if ($sectionName === 'cobs' && $this->isThirdWeek($data['start_at'] ?? null)) {
-//            $fourthWeekData = $data;
-//            $fourthWeekData['start_at'] = Carbon::parse($data['start_at'])->addWeeks(1);
-//            $fourthWeekData['end_at'] = $fourthWeekData['start_at'];
-//
-//            $newBatchNo = $this->generateBatchNo();
-//            $baseResponseData4thWeek = $this->buildBaseResponseData($fourthWeekData, $newBatchNo, $sectionName);
-//
-//            DB::transaction(function () use ($data, $baseResponseData4thWeek) {
-//                $this->processResponseBatch(
-//                    $data['response'] ?? [],
-//                    $data['image'] ?? $data['images'] ?? [],
-//                    'response',
-//                    $baseResponseData4thWeek,
-//                    $this->imageKit
-//                );
-//
-//                $this->response->where('batch_no', $baseResponseData4thWeek['batch_no'])
-//                    ->whereMonth('start_at', Carbon::parse($baseResponseData4thWeek['start_at'])->month)
-//                    ->whereDay('start_at', '>=', 22)
-//                    ->delete();
-//            });
-//        }
     }
     private function isThirdWeek($startAt): bool
     {
@@ -275,20 +249,9 @@ class ResponseService
 
         $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses);
         $signatory2 = $this->formatFieldData($batchResponses, 'approve', 'approve');
-
-        // Add this logic for previous month completion
-
-//        $requiredCount = match ($section) {
-//            'cobs', 'birds' => 4,
-//            'pests' => 2,
-//            default => 0,
-//        };
-//
-//        $previousMonthCompleted = $this->checkPreviousMonthCompleted(
-//            $firstResponse?->user_id,
-//            $firstResponse?->checklist_id,
-//            $requiredCount
-//        );
+        $additionalAttachments = Image::where('batch_no', $batchNo)
+            ->pluck('url')
+            ->values();
 
         return [
             'batch_no' => (int) $batchNo,
@@ -325,10 +288,10 @@ class ResponseService
                     'images' => $response->images->pluck('url'),
                 ];
             })->values(),
+            'additional_attachments' => $additionalAttachments,
             'signatory_1' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
             'signatory_2' => $signatory2,
             'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
-//            'previous_month_completed' => $previousMonthCompleted,
             'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
         ];
     }
@@ -350,17 +313,12 @@ class ResponseService
     }
     private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount): ?bool
     {
-//        if (!$userId || !$checklistId) {
-//            return null;
-//        }
-
         $year = (int) request()->input('year', now()->year);
         $month = (int) request()->input('month', now()->month);
 
         $previousMonth = Carbon::create($year, $month, 1)->subMonth();
 
         $count = Response::
-//        where('user_id', $userId)
             where('checklist_id', $checklistId)
             ->where('is_completed', true)
             ->whereMonth('start_at', $previousMonth->month)
@@ -370,125 +328,6 @@ class ResponseService
 
         return $count >= $requiredCount;
     }
-//    private function computeHierarchicalScore($firstResponse, $batchResponses) {
-//        $checklist = $firstResponse?->checklist;
-//        if (!$checklist) {
-//            return ['score' => 0, 'breakdown' => []];
-//        }
-//
-//        // Convert items to array (handles Collection, array, or JSON string)
-//        $categories = $this->ensureArray($checklist->items ?? []);
-//
-//        if (empty($categories)) {
-//            return ['score' => 0, 'breakdown' => []];
-//        }
-//
-//        $totalScore = 0;
-//        $totalPossibleScore = 0;
-//        $categoryCount = count($categories);
-//        $breakdown = [];
-//
-//        // Iterate through each category (e.g., CLEANLINESS, BIOSECURITY)
-//        foreach ($categories as $categoryIndex => $category) {
-//            $categoryName = $category['name'] ?? "Category $categoryIndex";
-//            $categoryItems = $category['items'] ?? []; // Items in category (e.g., Front Gate, UV Cabinets)
-//            $itemCount = count($categoryItems);
-//
-//            if ($itemCount === 0) continue;
-//
-//            $categoryWeight = 1 / $categoryCount; // Each category gets equal weight
-//            $categoryScore = 0;
-//            $categoryPossibleScore = 0;
-//            $itemsBreakdown = [];
-//
-//            // Iterate through items in category
-//            foreach ($categoryItems as $itemIndex => $item) {
-//                $itemName = $item['name'] ?? "Item $itemIndex";
-//                $subItems = $item['sub_items'] ?? []; // Sub-items (actual questions)
-//                $subItemCount = count($subItems);
-//
-//                if ($subItemCount === 0) continue;
-//
-//                $itemWeight = 1 / $itemCount; // Equal weight per item in category
-//                $itemScore = 0;
-//                $itemPossibleScore = 0;
-//                $subItemsBreakdown = [];
-//
-//                // Iterate through sub-items
-//                foreach ($subItems as $subItemIndex => $subItem) {
-//                    $subItemName = $subItem['name'] ?? "Sub-item $subItemIndex";
-//                    $subItemWeight = 1 / $subItemCount; // Equal weight per sub-item
-//
-//                    // Find response for this specific path: category → item → sub-item
-//                    $responseValue = $this->findResponseValue(
-//                        $batchResponses,
-//                        $categoryIndex,
-//                        $itemIndex,
-//                        $subItemIndex
-//                    );
-//
-//                    // Normalize to 0-1 scale (response values: 0, 25, 50, 75, 100)
-//                    $normalizedValue = is_numeric($responseValue) ? ($responseValue / 100) : 0;
-//
-//                    // Score contribution: category_weight × item_weight × sub_item_weight × response_value
-//                    $subItemScore = $categoryWeight * $itemWeight * $subItemWeight * $normalizedValue;
-//                    $subItemPossibleScore = $categoryWeight * $itemWeight * $subItemWeight;
-//
-//                    $itemScore += $subItemScore;
-//                    $itemPossibleScore += $subItemPossibleScore;
-//                    $totalScore += $subItemScore;
-//                    $totalPossibleScore += $subItemPossibleScore;
-//
-//                    // Calculate sub-item percentage contribution
-//                    // Base allocation: (1 / subItemCount) * 100
-//                    // Actual contribution: base allocation * normalized response value
-//                    $subItemBasePercentage = ($subItemWeight * 100);
-//                    $subItemContributionPercentage = $subItemBasePercentage * $normalizedValue;
-//
-//                    $subItemsBreakdown[] = [
-//                        'name' => $subItemName,
-//                        'score' => (int) $responseValue,
-//                        'allocation' => $subItemBasePercentage,
-//                        'percentage' => round($subItemContributionPercentage, 2),
-//                    ];
-//                }
-//
-//                // Calculate item percentage
-//                $itemPercentage = $itemPossibleScore > 0 ? round(($itemScore / $itemPossibleScore) * 100, 2) : 0;
-//                $itemBaseAllocation = ($itemWeight * 100);
-//                $categoryScore += $itemScore;
-//                $categoryPossibleScore += $itemPossibleScore;
-//
-//                $itemsBreakdown[] = [
-//                    'name' => $itemName,
-//                    'score' => $itemPercentage,
-//                    'allocation' => $itemBaseAllocation,
-//                    'percentage' => $itemPercentage,
-//                    'sub_items' => $subItemsBreakdown,
-//                ];
-//            }
-//
-//            // Calculate category percentage
-//            $categoryPercentage = $categoryPossibleScore > 0 ? round(($categoryScore / $categoryPossibleScore) * 100, 2) : 0;
-//
-//            $breakdown[] = [
-//                'category' => $categoryName,
-//                'score' => (round($categoryWeight * 100, 2) / 100) * $categoryPercentage,
-//                'percentage' => $categoryPercentage,
-//                'allocation' => round($categoryWeight * 100, 2),
-//                'items' => $itemsBreakdown,
-//            ];
-//        }
-//
-//        // Return total score and breakdown
-//        $totalScore = $totalPossibleScore > 0 ? round(($totalScore / $totalPossibleScore) * 100, 2) : 0;
-//
-//        return [
-//            'score' => $totalScore,
-//            'breakdown' => $breakdown,
-//        ];
-//    }
-
     private function computeHierarchicalScore($firstResponse, $batchResponses)
     {
         $checklist = $firstResponse?->checklist;
@@ -783,7 +622,6 @@ class ResponseService
     {
         return $this->imageKit;
     }
-
     public function mergeResponse(array $data): void
     {
         $month = (int) ($data['month'] ?? 0);
@@ -836,7 +674,6 @@ class ResponseService
             });
         });
     }
-
     protected function resolveEvaluatorId(?int $checklistId): ?int
     {
         if (! $checklistId) {
@@ -865,6 +702,40 @@ class ResponseService
             ? strtolower($checklist->section->name)
             : null;
     }
+    public function additionalAttachment($images, int $batchNo): void
+    {
+        if (empty($batchNo)) {
+            \Log::error('additionalAttachment called without a batch_no.');
+            return;
+        }
+
+        $imagesToProcess = !is_array($images) ? [$images] : $images;
+
+        foreach ($imagesToProcess as $image) {
+            if (!$image || !method_exists($image, 'getRealPath')) {
+                continue;
+            }
+
+            try {
+                $fileName = time() . '_' . uniqid() . '_' . $image->getClientOriginalName();
+                $uploadFile = $this->imageKit->uploadFile([
+                    'file' => fopen($image->getRealPath(), 'r'),
+                    'fileName' => $fileName,
+                ]);
+
+                $url = data_get($uploadFile, 'result.url');
+                if ($url) {
+                    Image::create([
+                        'batch_no' => $batchNo,
+                        'url' => $url,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                \Log::error('ImageKit upload failed (batch_no: ' . $batchNo . '): ' . $e->getMessage());
+            }
+        }
+    }
+
     public function truncateResponse() {
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
 

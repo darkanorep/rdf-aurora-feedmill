@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreAdditionalAttachmentRequest;
 use App\Services\ResponseService;
 use Illuminate\Http\Request;
 
@@ -13,11 +14,9 @@ class ResponseController extends Controller
     {
         $this->responseService = $responseService;
     }
-
     public function index(Request $request) {
         return $this->responseService->getResponses($request);
     }
-
     public function store(Request $request)
     {
         $data = $request->all();
@@ -29,7 +28,6 @@ class ResponseController extends Controller
             'data' => $response,
         ], 201, [], JSON_UNESCAPED_SLASHES);
     }
-
     public function summaryReportByBatchNo(Request $request) {
         $batchNo = $request->input('batch_no');
 
@@ -58,6 +56,18 @@ class ResponseController extends Controller
 
         return response()->json([
             'message' => 'Response merge successfully.',
+        ]);
+    }
+    public function storeAdditionalAttachment(StoreAdditionalAttachmentRequest $request)
+    {
+        $this->responseService->additionalAttachment(
+            $request->file('image'),
+            $request->input('batch_no')
+        );
+
+        return response()->json([
+            'message' => 'Attachments uploaded successfully.',
+            'batch_no' => $request->input('batch_no'),
         ]);
     }
     public function truncateResponse() {

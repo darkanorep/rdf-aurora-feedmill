@@ -85,6 +85,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('responses/assess', [ResponseController::class, 'assessResponse']);
 //    Route::post('responses/merge', [ResponseController::class, 'mergeResponse']);
     Route::post('responses/merge', [ResponseDuplicationController::class, 'store']);
+    Route::post('responses/additional-attachment', [ResponseController::class, 'storeAdditionalAttachment']);
     Route::resource('responses', ResponseController::class);
 
     //APPROVAL
