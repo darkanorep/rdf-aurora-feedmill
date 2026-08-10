@@ -283,7 +283,7 @@ class ResponseService
             'temporal_audit' => $firstResponse?->temporal_audit,
             'start_at' => $startAt,
             'end_at' => $firstResponse?->end_at,
-            'week' => $startAt ? min(Carbon::parse($startAt)->weekOfMonth, 4) : null,
+            'week' => $startAt ? (int) ceil(Carbon::parse($startAt)->day / 7) : null,
             'responses' => $batchResponses->map(function ($response) {
                 return [
                     'id' => $response->id,
