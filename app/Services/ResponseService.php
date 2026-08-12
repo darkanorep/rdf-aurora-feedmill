@@ -375,13 +375,9 @@ class ResponseService
                 && $progress == 100
                 && is_null($firstResponse?->is_approved)
                 && is_null($firstResponse?->is_evaluated)
-                && is_null($firstResponse?->is_assessed) => 'For Approval',
-
-                $firstResponse?->is_approved === true
+                && is_null($firstResponse?->is_assessed), $firstResponse?->is_approved === true
                 && is_null($firstResponse?->is_evaluated)
-                && is_null($firstResponse?->is_assessed) => 'On Progress',
-
-                $firstResponse?->is_approved === true
+                && is_null($firstResponse?->is_assessed), $firstResponse?->is_approved === true
                 && $firstResponse?->is_evaluated === true
                 && is_null($firstResponse?->is_assessed) => 'For Acknowledgement',
 
