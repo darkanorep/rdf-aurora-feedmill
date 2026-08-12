@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AcknowledgementSetting;
 use App\Models\Response;
 use App\Models\Unit;
+use Carbon\Carbon;
 
 class ApprovalService
 {
@@ -57,6 +58,9 @@ class ApprovalService
         $userId = auth()->id();
         $isPending = $status == 'pending';
 
+        $month = $request->month ?? Carbon::now()->month;
+        $year  = $request->year ?? Carbon::now()->year;
+
         $responses = $this->pendingOrHistoryQuery($userId, $isPending)
             ->with(['section', 'images'])
             ->select('responses.*')
@@ -72,7 +76,7 @@ class ApprovalService
 
         return match ($sectionName) {
             'pests', 'birds' => $this->responseService->formatPestAndBirdsResponses($responses, $sectionName),
-            default => $this->responseService->formatCobsResponses($responses),
+            default => $this->responseService->formatCobsResponses($responses, $month, $year),
         };
     }
 
