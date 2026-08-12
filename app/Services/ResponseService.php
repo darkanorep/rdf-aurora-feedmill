@@ -38,7 +38,7 @@ class ResponseService
         $year  = (int) ($request->year ?? Carbon::now()->year);
 
         return match ($section) {
-            'pests', 'birds' => $this->formatPestAndBirdsResponses($responses, $section),
+            'pests', 'birds' => $this->formatPestAndBirdsResponses($responses, $section, $month, $year),
             default => $this->formatCobsResponses($responses, $month, $year),
         };
     }
@@ -55,7 +55,68 @@ class ResponseService
             return $this->formatUnitResponse($unit, $batchesByUnit, $month, $year);
         });
     }
-    public function formatPestAndBirdsResponses($responses, $section) {
+//    public function formatPestAndBirdsResponses($responses, $section) {
+//        $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
+//            return $this->formatBatchResponse($batchResponses, $batchNo);
+//        })->values();
+//
+//        $checklists = Section::query()
+//            ->with(['checkLists'])
+//            ->where('name', $section)
+//            ->first()
+//            ?->checkLists ?? collect();
+//
+//        $requiredCount = $section === 'birds' ? 4 : 2;
+//
+//        // Resolve once, from the full response set — not from a checklist's
+//        // current-period batches, which may legitimately be empty while last
+//        // month's data still exists and should be checked.
+//        $userId = data_get($responses->first(), 'user_id') ?? auth()->id();
+//
+//        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount, $userId) {
+//            $checklistBatches = $batches->where('checklist_id', $checklist->id);
+//            if ($section === 'birds') {
+//                $periods = ['Period 1' => [], 'Period 2' => [], 'Period 3' => [], 'Period 4' => []];
+//                foreach ($checklistBatches as $batch) {
+//                    $day = Carbon::parse($batch['start_at'])->day;
+//                    $periods[match (true) {
+//                        $day <= 7  => 'Period 1',
+//                        $day <= 14 => 'Period 2',
+//                        $day <= 21 => 'Period 3',
+//                        default    => 'Period 4',
+//                    }][] = $batch;
+//                }
+//                $periods = array_map(fn($p) => collect($p)->values(), $periods);
+//
+//                $inspectionAreas = collect($checklist->items)
+//                    ->firstWhere('name', 'Inspection Areas')['items'] ?? [];
+//            } else {
+//                $periods = [
+//                    'Period 1' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day <= 15)->values(),
+//                    'Period 2' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day > 15)->values(),
+//                ];
+//            }
+//
+//
+//            $previousMonthCompleted = $userId
+//                ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
+//                : null;
+//
+//            return [
+//                $checklist->checklist_name => [
+//                    'id'                       => $checklist->id,
+//                    'checklist_name'           => $checklist->checklist_name,
+//                    'created_at'               => Carbon::parse($checklist->created_at)->format('Y-m-d'),
+//                    'previous_month_completed' => $previousMonthCompleted,
+//                    'periods'                  => $periods,
+//                    ...($section === 'birds' ? ['inspection_areas' => $inspectionAreas] : []),
+//                ],
+//            ];
+//        });
+//    }
+
+    public function formatPestAndBirdsResponses($responses, $section, int $month, int $year)
+    {
         $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
             return $this->formatBatchResponse($batchResponses, $batchNo);
         })->values();
@@ -66,39 +127,49 @@ class ResponseService
             ->first()
             ?->checkLists ?? collect();
 
-        $requiredCount = $section === 'birds' ? 4 : 2;
+        // Only pest has a fixed, meaningful "must submit N times" rule.
+        // Birds' period count is now calendar-driven (4 or 5 depending on the
+        // month), so a hardcoded required count no longer applies — skip the
+        // check entirely for birds rather than testing against a stale number.
+        $requiredCount = $section === 'birds' ? null : 2;
 
-        // Resolve once, from the full response set — not from a checklist's
-        // current-period batches, which may legitimately be empty while last
-        // month's data still exists and should be checked.
         $userId = data_get($responses->first(), 'user_id') ?? auth()->id();
 
-        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount, $userId) {
+        $periodsInMonth = $section === 'birds'
+            ? Carbon::createFromDate($year, $month, 1)->endOfMonth()->weekOfMonth()
+            : null;
+
+        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount, $userId, $periodsInMonth) {
             $checklistBatches = $batches->where('checklist_id', $checklist->id);
+
             if ($section === 'birds') {
-                $periods = ['Period 1' => [], 'Period 2' => [], 'Period 3' => [], 'Period 4' => []];
+                $periods = collect(range(1, $periodsInMonth))
+                    ->mapWithKeys(fn ($week) => ['Period ' . $week => collect()])
+                    ->all();
+
                 foreach ($checklistBatches as $batch) {
-                    $day = Carbon::parse($batch['start_at'])->day;
-                    $periods[match (true) {
-                        $day <= 7  => 'Period 1',
-                        $day <= 14 => 'Period 2',
-                        $day <= 21 => 'Period 3',
-                        default    => 'Period 4',
-                    }][] = $batch;
+                    $week = Carbon::parse($batch['start_at'])->weekOfMonth();
+
+                    if ($week < 1 || $week > $periodsInMonth) {
+                        continue;
+                    }
+
+                    $periods['Period ' . $week]->push($batch);
                 }
-                $periods = array_map(fn($p) => collect($p)->values(), $periods);
 
                 $inspectionAreas = collect($checklist->items)
                     ->firstWhere('name', 'Inspection Areas')['items'] ?? [];
             } else {
                 $periods = [
-                    'Period 1' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day <= 15)->values(),
-                    'Period 2' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day > 15)->values(),
+                    'Period 1' => $checklistBatches->filter(fn ($b) => Carbon::parse($b['start_at'])->day <= 15)->values(),
+                    'Period 2' => $checklistBatches->filter(fn ($b) => Carbon::parse($b['start_at'])->day > 15)->values(),
                 ];
             }
 
-
-            $previousMonthCompleted = $userId
+            // Birds no longer has a required-count rule, so previous_month_completed
+            // is only computed for pest. Explicitly null (not false) for birds so
+            // the frontend can distinguish "not applicable" from "not completed".
+            $previousMonthCompleted = ($requiredCount !== null && $userId)
                 ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
                 : null;
 
