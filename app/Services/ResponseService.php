@@ -365,7 +365,28 @@ class ResponseService
             'signatory_1' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
             'signatory_2' => $signatory2,
             'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
-            'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
+//            'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
+            'status' => match (true) {
+                (bool) $firstResponse?->parents_response_id, $firstResponse?->is_approved === true
+                && $firstResponse?->is_evaluated === true
+                && $firstResponse?->is_assessed === true => 'Done',
+
+                $firstResponse?->is_completed
+                && $progress == 100
+                && is_null($firstResponse?->is_approved)
+                && is_null($firstResponse?->is_evaluated)
+                && is_null($firstResponse?->is_assessed) => 'For Approval',
+
+                $firstResponse?->is_approved === true
+                && is_null($firstResponse?->is_evaluated)
+                && is_null($firstResponse?->is_assessed) => 'On Progress',
+
+                $firstResponse?->is_approved === true
+                && $firstResponse?->is_evaluated === true
+                && is_null($firstResponse?->is_assessed) => 'For Acknowledgement',
+
+                default => 'On Progress',
+            },
         ];
     }
     private function formatFieldData($batchResponses, string $fieldName, string $imageFieldName): ?array
