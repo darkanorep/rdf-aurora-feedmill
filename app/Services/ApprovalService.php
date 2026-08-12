@@ -75,7 +75,7 @@ class ApprovalService
         $sectionName = strtolower($responses->first()->section?->name) ?? '';
 
         return match ($sectionName) {
-            'pests', 'birds' => $this->responseService->formatPestAndBirdsResponses($responses, $sectionName),
+            'pests', 'birds' => $this->responseService->formatPestAndBirdsResponses($responses, $sectionName, $month, $year),
             default => $this->responseService->formatCobsResponses($responses, $month, $year),
         };
     }
