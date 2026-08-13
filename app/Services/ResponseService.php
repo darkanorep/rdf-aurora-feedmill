@@ -325,7 +325,15 @@ class ResponseService
         $progress = $countSubItems > 0 ? ($countResponses / $countSubItems) * 100 : 0;
 
         $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses);
+        $signatory1 = $this->formatFieldData($batchResponses, 'evaluate', 'evaluate');
         $signatory2 = $this->formatFieldData($batchResponses, 'approve', 'approve');
+        $signatory3 = $this->formatFieldData($batchResponses, 'assess', 'assess');
+
+        $status = match (true) {
+            is_null($signatory1) => 'For Acknowledgement',
+            is_null($signatory2), is_null($signatory3) => 'For Approval',
+            default => 'Done',
+        };
 
         return [
             'batch_no' => (int) $batchNo,
@@ -362,16 +370,10 @@ class ResponseService
                     'images' => $response->images->pluck('url'),
                 ];
             })->values(),
-            'signatory_1' => $this->formatFieldData($batchResponses, 'evaluate', 'evaluate'),
+            'signatory_1' => $signatory1,
             'signatory_2' => $signatory2,
-            'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
-//            'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
-            'status' => match (true) {
-                $firstResponse->is_completed = true => 'For Acknowledgement',
-                $firstResponse->is_approved = true && $firstResponse->is_evaluated = null => 'For Acknowledgement',
-                $firstResponse->is_evaluated = true && $firstResponse->is_assesed = false => 'For Acknowledgement',
-                $firstResponse->is_assesed = true => 'Done'
-            },
+            'signatory_3' => $signatory3,
+            'status'      => $status,
         ];
     }
     private function formatFieldData($batchResponses, string $fieldName, string $imageFieldName): ?array
