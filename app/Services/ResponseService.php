@@ -367,21 +367,10 @@ class ResponseService
             'signatory_3' => $this->formatFieldData($batchResponses, 'assess', 'assess'),
 //            'status' => $firstResponse?->is_approved ? 'Approved' : ($firstResponse?->is_completed && $progress == 100 ? 'For Acknowledgement' : 'On Progress')
             'status' => match (true) {
-                (bool) $firstResponse?->parents_response_id, $firstResponse?->is_approved === true
-                && $firstResponse?->is_evaluated === true
-                && $firstResponse?->is_assessed === true => 'Done',
-
-                $firstResponse?->is_completed
-                && $progress == 100
-                && is_null($firstResponse?->is_approved)
-                && is_null($firstResponse?->is_evaluated)
-                && is_null($firstResponse?->is_assessed), $firstResponse?->is_approved === true
-                && is_null($firstResponse?->is_evaluated)
-                && is_null($firstResponse?->is_assessed), $firstResponse?->is_approved === true
-                && $firstResponse?->is_evaluated === true
-                && is_null($firstResponse?->is_assessed) => 'For Acknowledgement',
-
-                default => 'On Progress',
+                $firstResponse->is_completed = true => 'For Acknowledgement',
+                $firstResponse->is_approved = true && $firstResponse->is_evaluated = null => 'For Acknowledgement',
+                $firstResponse->is_evaluated = true && $firstResponse->is_assesed = false => 'For Acknowledgement',
+                $firstResponse->is_assesed = true => 'Done'
             },
         ];
     }
