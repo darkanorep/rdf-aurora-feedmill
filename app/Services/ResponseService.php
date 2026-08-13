@@ -317,7 +317,7 @@ class ResponseService
         })->values()->first();
     }
     private function formatBatchResponse($batchResponses, $batchNo) {
-        $section = $batchResponses->first()?->section?->name;
+        $section = strtolower($batchResponses->first()?->section?->name);
         $firstResponse = $batchResponses->first();
         $startAt = $firstResponse?->start_at;
         $countSubItems = $firstResponse?->checklist?->countSubItems();
@@ -330,6 +330,8 @@ class ResponseService
         $signatory3 = $this->formatFieldData($batchResponses, 'assess', 'assess');
 
         $status = match (true) {
+            $section === 'pests' => is_null($signatory1) ? 'For Acknowledgement' : 'Done',
+            ! is_null($firstResponse?->parent_response_id) => 'Done',
             is_null($signatory1) => 'For Acknowledgement',
             is_null($signatory2), is_null($signatory3) => 'For Approval',
             default => 'Done',
