@@ -31,8 +31,8 @@ class ResponseService
         $this->acknowledgementSetting = AcknowledgementSetting::get();
     }
     public function getResponses($request) {
-        $responses = $this->response->useFilters()->get();
-        $section = $request->section;
+        $responses = $this->response->with('user')->useFilters()->get();
+        $section = strtolower($request->section);
 
         $month = (int) ($request->month ?? Carbon::now()->month);
         $year  = (int) ($request->year ?? Carbon::now()->year);
@@ -55,65 +55,6 @@ class ResponseService
             return $this->formatUnitResponse($unit, $batchesByUnit, $month, $year);
         });
     }
-//    public function formatPestAndBirdsResponses($responses, $section) {
-//        $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
-//            return $this->formatBatchResponse($batchResponses, $batchNo);
-//        })->values();
-//
-//        $checklists = Section::query()
-//            ->with(['checkLists'])
-//            ->where('name', $section)
-//            ->first()
-//            ?->checkLists ?? collect();
-//
-//        $requiredCount = $section === 'birds' ? 4 : 2;
-//
-//        // Resolve once, from the full response set — not from a checklist's
-//        // current-period batches, which may legitimately be empty while last
-//        // month's data still exists and should be checked.
-//        $userId = data_get($responses->first(), 'user_id') ?? auth()->id();
-//
-//        return $checklists->mapWithKeys(function ($checklist) use ($batches, $section, $requiredCount, $userId) {
-//            $checklistBatches = $batches->where('checklist_id', $checklist->id);
-//            if ($section === 'birds') {
-//                $periods = ['Period 1' => [], 'Period 2' => [], 'Period 3' => [], 'Period 4' => []];
-//                foreach ($checklistBatches as $batch) {
-//                    $day = Carbon::parse($batch['start_at'])->day;
-//                    $periods[match (true) {
-//                        $day <= 7  => 'Period 1',
-//                        $day <= 14 => 'Period 2',
-//                        $day <= 21 => 'Period 3',
-//                        default    => 'Period 4',
-//                    }][] = $batch;
-//                }
-//                $periods = array_map(fn($p) => collect($p)->values(), $periods);
-//
-//                $inspectionAreas = collect($checklist->items)
-//                    ->firstWhere('name', 'Inspection Areas')['items'] ?? [];
-//            } else {
-//                $periods = [
-//                    'Period 1' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day <= 15)->values(),
-//                    'Period 2' => $checklistBatches->filter(fn($b) => Carbon::parse($b['start_at'])->day > 15)->values(),
-//                ];
-//            }
-//
-//
-//            $previousMonthCompleted = $userId
-//                ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
-//                : null;
-//
-//            return [
-//                $checklist->checklist_name => [
-//                    'id'                       => $checklist->id,
-//                    'checklist_name'           => $checklist->checklist_name,
-//                    'created_at'               => Carbon::parse($checklist->created_at)->format('Y-m-d'),
-//                    'previous_month_completed' => $previousMonthCompleted,
-//                    'periods'                  => $periods,
-//                    ...($section === 'birds' ? ['inspection_areas' => $inspectionAreas] : []),
-//                ],
-//            ];
-//        });
-//    }
 
     public function formatPestAndBirdsResponses($responses, $section, int $month, int $year)
     {
@@ -348,6 +289,7 @@ class ResponseService
             'unit' => $firstResponse?->unit?->name,
             'user_id' => $firstResponse?->user_id,
             'user' => $firstResponse?->user?->getFullNameAttribute(),
+            'user_signatory' => $firstResponse?->user?->signature,
             'evaluator_id' => $firstResponse?->evaluator_id,
             'evaluator' => $firstResponse?->evaluator?->getFullNameAttribute(),
             'approver_id' => $signatory2 ? $firstResponse?->assessor_id : $firstResponse?->approver_id,
