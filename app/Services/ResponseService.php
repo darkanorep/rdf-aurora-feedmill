@@ -272,6 +272,7 @@ class ResponseService
 
         $status = match (true) {
             $section === 'pests' => is_null($signatory1) ? 'For Acknowledgement' : 'Done',
+            $section === 'birds' => (is_null($signatory2) || is_null($signatory3)) ? 'For Approval' : 'Done',
             ! is_null($firstResponse?->parent_response_id) => 'Done',
             is_null($signatory1) => 'For Acknowledgement',
             is_null($signatory2), is_null($signatory3) => 'For Approval',

@@ -122,6 +122,10 @@ class ApprovalService
         }
 
         $sample = $responses->first(); // only for checking status
+        $baseResponseData = $this->responseService->buildBaseResponseData($data);
+        $signatory2Filled = Response::where('batch_no', $batchNo)
+            ->whereNotNull('approve')
+            ->exists();
 
         switch ($section) {
 
@@ -130,8 +134,21 @@ class ApprovalService
                 if (!$sample->is_approved) {
                     Response::where('batch_no', $batchNo)->update(['is_approved' => true]);
                 }
+
+                if (!empty($data['approve'] ?? [])) {
+                    $this->responseService->processResponseBatch(
+                        $data['approve'],
+                        $data['approve_image'] ?? [],
+                        'approve',
+                        $baseResponseData,
+                        $this->responseService->getImageKit()
+                    );
+                }
+
                 break;
             case 'birds':
+
+
 
                 if (!$sample->is_evaluated) {
                     Response::where('batch_no', $batchNo)
@@ -148,14 +165,34 @@ class ApprovalService
                         ->update(['is_assessed' => true]);
 
                 }
+
+                if (!empty($data['approve'] ?? [])) {
+                    if ($signatory2Filled) {
+                        // Redirect approve payload to assess
+                        $this->responseService->processResponseBatch(
+                            $data['approve'],
+                            $data['approve_image'] ?? [],
+                            'assess',
+                            $baseResponseData,
+                            $this->responseService->getImageKit()
+                        );
+
+                        Response::where('batch_no', $batchNo)->update(['is_assessed' => true]);
+                    } else {
+                        $this->responseService->processResponseBatch(
+                            $data['approve'],
+                            $data['approve_image'] ?? [],
+                            'approve',
+                            $baseResponseData,
+                            $this->responseService->getImageKit()
+                        );
+
+                        Response::where('batch_no', $batchNo)->update(['is_approved' => true]);
+                    }
+                }
                 break;
 
             default:
-                $baseResponseData = $this->responseService->buildBaseResponseData($data);
-                // Check if signatory_2 (approve) is already filled for this batch
-                $signatory2Filled = Response::where('batch_no', $batchNo)
-                    ->whereNotNull('approve')
-                    ->exists();
 
                 if (!empty($data['approve'] ?? [])) {
                     if ($signatory2Filled) {
