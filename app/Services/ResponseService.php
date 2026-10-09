@@ -14,6 +14,11 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use ImageKit\ImageKit;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
+use RuntimeException;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Http\UploadedFile;
 
 #[AllowDynamicProperties]
 class ResponseService
@@ -160,28 +165,113 @@ class ResponseService
             ],
         ];
     }
-    public function storeResponse(array $data) {
-        $batchNo = $this->generateBatchNo();
+    public function storeResponse(array $data): ?array
+    {
+        $sectionName = $this->resolveChecklistSectionName($data['checklist_id'] ?? null);
+        $responses   = $data['response'] ?? [];
 
-        if ($data['batch_no']) {
-            DB::transaction(function () use ($data) {
-                $responseIds = $this->response->where('batch_no', $data['batch_no'])->pluck('id');
-                Image::whereIn('response_id', $responseIds)->forceDelete();
-                $this->response->where('batch_no', $data['batch_no'])->forceDelete();
+        // Ignore image groups with no matching response key (avoids orphan uploads).
+        $imageItems = array_intersect_key($data['image'] ?? $data['images'] ?? [], $responses);
+
+        // 1. Slow network work first, outside the transaction.
+        $uploaded = $this->uploadImageGroups($imageItems);
+
+        try {
+            // 2. All DB work is atomic.
+            $batchNo = DB::transaction(function () use ($data, $responses, $sectionName, $uploaded) {
+                $existingBatchNo = $data['batch_no'] ?? null;
+
+                if ($existingBatchNo) {
+                    $ids = $this->response->where('batch_no', $existingBatchNo)->pluck('id');
+                    Image::whereIn('response_id', $ids)->forceDelete();
+                    $this->response->where('batch_no', $existingBatchNo)->forceDelete();
+                }
+
+                $batchNo  = $existingBatchNo ?: $this->generateBatchNo();
+                $baseData = $this->buildBaseResponseData($data, $batchNo, $sectionName);
+
+                foreach ($responses as $key => $value) {
+                    $response = $this->response->create(array_merge($baseData, [
+                        'response' => $this->parseData($value),
+                    ]));
+
+                    foreach ($uploaded[$key] ?? [] as $file) {
+                        Image::create([
+                            'response_id' => $response->id,
+                            'url'         => $file['url'],
+                        ]);
+                    }
+                }
+
+                return (int) $batchNo;
             });
+        } catch (\Throwable $e) {
+            $this->discardUploads($uploaded);   // don't leave orphans in ImageKit
+            throw $e;
         }
 
-        $sectionName = $this->resolveChecklistSectionName($data['checklist_id'] ?? null);
-        $baseResponseData = $this->buildBaseResponseData($data, $batchNo, $sectionName);
-
-        $this->processResponseBatch(
-            $data['response'] ?? [],
-            $data['image'] ?? $data['images'] ?? [],
-            'response',
-            $baseResponseData,
-            $this->imageKit
-        );
+        return $this->generateSummaryReportByBatchNo($batchNo);
     }
+
+    private function uploadImageGroups(array $imageItems): array
+    {
+        $uploaded = [];
+
+        try {
+            foreach ($imageItems as $key => $images) {
+                foreach (Arr::wrap($images) as $image) {
+                    if (! $image instanceof UploadedFile || ! $image->isValid()) {
+                        continue;
+                    }
+                    $uploaded[$key][] = $this->uploadToImageKit($image);
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->discardUploads($uploaded);   // partial batch: roll back what already went up
+            throw $e;
+        }
+
+        return $uploaded;
+    }
+
+    private function uploadToImageKit(UploadedFile $image): array
+    {
+        $handle = fopen($image->getRealPath(), 'r');
+
+        try {
+            $result = $this->imageKit->uploadFile([
+                'file'     => $handle,
+                'fileName' => Str::uuid() . '.' . ($image->guessExtension() ?? 'jpg'),
+            ]);
+        } finally {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+        }
+
+        $url = data_get($result, 'result.url');
+
+        if (! $url) {
+            throw new RuntimeException('ImageKit upload failed: ' . json_encode(data_get($result, 'error')));
+        }
+
+        return ['url' => $url, 'file_id' => data_get($result, 'result.fileId')];
+    }
+
+
+    private function discardUploads(array $uploaded): void
+    {
+        foreach (collect($uploaded)->flatten(1) as $file) {
+            try {
+                if (! empty($file['file_id'])) {
+                    $this->imageKit->deleteFile($file['file_id']);
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('Could not clean up ImageKit file ' . ($file['file_id'] ?? '?') . ': ' . $e->getMessage());
+            }
+        }
+    }
+
     private function isThirdWeek($startAt): bool
     {
         if (!$startAt) {
@@ -728,38 +818,59 @@ class ResponseService
             ? strtolower($checklist->section->name)
             : null;
     }
-    public function additionalAttachment($images, int $responseId): void
+    public function additionalAttachment(UploadedFile|array $images, int $responseId): array
     {
-        if (empty($responseId)) {
-            \Log::error('additionalAttachment called without a response_id.');
-            return;
+        $response = $this->response->findOrFail($responseId);
+
+        // Flatten so image[0][] / image[0][0] shapes work as well as image[].
+        $files = collect(Arr::flatten(Arr::wrap($images)));
+
+        [$valid, $invalid] = $files->partition(
+            fn ($file) => $file instanceof UploadedFile && $file->isValid()
+        );
+
+        // Reject the whole request if anything is unusable; never drop images silently.
+        if ($valid->isEmpty() || $invalid->isNotEmpty()) {
+            $reasons = $invalid
+                ->map(fn ($file) => $file instanceof UploadedFile
+                    ? $file->getErrorMessage()
+                    : 'Unexpected input of type ' . get_debug_type($file))
+                ->unique()
+                ->values()
+                ->all();
+
+            \Log::warning("additionalAttachment rejected (response_id: {$responseId})", [
+                'received' => $files->count(),
+                'reasons'  => $reasons,
+            ]);
+
+            throw ValidationException::withMessages([
+                'image' => $reasons ?: ['No images were received.'],
+            ]);
         }
 
-        $imagesToProcess = !is_array($images) ? [$images] : $images;
+        $uploaded = [];
 
-        foreach ($imagesToProcess as $image) {
-            if (!$image || !method_exists($image, 'getRealPath')) {
-                continue;
+        try {
+            foreach ($valid as $image) {
+                $uploaded[] = $this->uploadToImageKit($image);
             }
 
-            try {
-                $fileName = time() . '_' . uniqid() . '_' . $image->getClientOriginalName();
-                $uploadFile = $this->imageKit->uploadFile([
-                    'file' => fopen($image->getRealPath(), 'r'),
-                    'fileName' => $fileName,
-                ]);
-
-                $url = data_get($uploadFile, 'result.url');
-                if ($url) {
+            DB::transaction(function () use ($response, $uploaded) {
+                foreach ($uploaded as $file) {
                     Image::create([
-                        'response_id' => $responseId,
-                        'url' => $url,
+                        'response_id' => $response->id,
+                        'url'         => $file['url'],
                     ]);
                 }
-            } catch (\Exception $e) {
-                \Log::error('ImageKit upload failed (response_id: ' . $responseId . '): ' . $e->getMessage());
-            }
+            });
+        } catch (\Throwable $e) {
+            $this->discardUploads([$uploaded]);
+            \Log::error("additionalAttachment failed (response_id: {$responseId}): " . $e->getMessage());
+            throw $e;
         }
+
+        return array_column($uploaded, 'url');
     }
 
     public function truncateResponse() {

@@ -19,7 +19,28 @@ class ResponseController extends Controller
     }
     public function store(Request $request)
     {
-        $data = $request->all();
+        $data = $request->validate([
+            'checklist_id'   => ['required', 'integer', 'exists:checklists,id'],
+            'unit_id'        => ['required', 'integer', 'exists:units,id'],
+            'start_at'       => ['required', 'date'],
+            'is_completed'   => ['required', 'boolean'],
+            'batch_no'       => ['nullable', 'integer'],
+            'evaluator_id'   => ['nullable', 'integer', 'exists:users,id'],
+            'approver_id'    => ['nullable', 'integer', 'exists:users,id'],
+            'assessor_id'    => ['nullable', 'integer', 'exists:users,id'],
+
+            'good_points'    => ['nullable', 'string'],
+            'remarks'        => ['nullable', 'string'],
+            'notes'          => ['nullable', 'string'],
+            'temporal_audit' => ['nullable'],            // tighten once the shape is known
+
+            'response'       => ['required', 'array', 'min:1', 'max:200'],
+            'response.*'     => ['required', 'json'],    // stricter than parseData(); see note below
+
+            'image'          => ['sometimes', 'array'],
+            'image.*'        => ['array', 'max:5'],      // max images per response
+            'image.*.*'      => ['file', 'mimes:jpg,jpeg,png,webp', 'max:5120'], // KB, tune this
+        ]);
 
         $response = $this->responseService->storeResponse($data);
 
