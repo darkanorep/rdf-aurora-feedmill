@@ -850,19 +850,23 @@ class ResponseService
         }
 
         $uploaded = [];
+        $saved    = [];
 
         try {
             foreach ($valid as $image) {
                 $uploaded[] = $this->uploadToImageKit($image);
             }
 
-            DB::transaction(function () use ($response, $uploaded) {
-                foreach ($uploaded as $file) {
-                    Image::create([
+            $saved = DB::transaction(function () use ($response, $uploaded) {
+                return collect($uploaded)->map(function (array $file) use ($response) {
+                    $image = Image::create([
                         'response_id' => $response->id,
                         'url'         => $file['url'],
+                        'file_id'     => $file['file_id'],
                     ]);
-                }
+
+                    return ['id' => $image->id, 'url' => $image->url];
+                })->all();
             });
         } catch (\Throwable $e) {
             $this->discardUploads([$uploaded]);
@@ -870,7 +874,7 @@ class ResponseService
             throw $e;
         }
 
-        return array_column($uploaded, 'url');
+        return $saved;   // return type: array<int, array{id: int, url: string}>
     }
 
     public function truncateResponse() {
@@ -887,5 +891,167 @@ class ResponseService
 //        DB::table('pests')->truncate();
 
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
+    }
+
+    /** @return array{batch_no: int, responses: array<int, array{index: int, id: int}>} */
+    public function createDraft(array $data): array
+    {
+        $sectionName = $this->resolveChecklistSectionName($data['checklist_id'] ?? null);
+
+        return DB::transaction(function () use ($data, $sectionName) {
+            $batchNo = $this->generateBatchNo();
+
+            $base = array_merge(
+                $this->buildBaseResponseData($data, $batchNo, $sectionName),
+                ['is_completed' => false, 'end_at' => null]
+            );
+
+            $created = [];
+            foreach ($data['responses'] as $index => $item) {
+                $row = $this->response->create(array_merge($base, [
+                    'response' => $this->parseData($item['response']),
+                ]));
+                $created[] = ['index' => $index, 'id' => $row->id];
+            }
+
+            return ['batch_no' => (int) $batchNo, 'responses' => $created];
+        });
+    }
+
+    public function updateDraft(int $batchNo, array $data): array
+    {
+        $first = $this->findOwnedBatch($batchNo);
+        $this->assertDraft($first);
+
+        return DB::transaction(function () use ($batchNo, $data, $first) {
+            $rows = $this->response->where('batch_no', $batchNo)->get()->keyBy('id');
+
+            $header = Arr::only($data, ['start_at', 'good_points', 'remarks', 'notes', 'temporal_audit']);
+            if ($header) {
+                $rows->each(fn (Response $row) => $row->update($header));  // goes through model casts
+            }
+
+            $base = array_merge(
+                $first->only([
+                    'checklist_id', 'unit_id', 'user_id', 'evaluator_id', 'approver_id',
+                    'assessor_id', 'batch_no', 'good_points', 'remarks', 'notes',
+                    'temporal_audit', 'start_at', 'is_evaluated',
+                ]),
+                $header,
+                ['is_completed' => false, 'end_at' => null]
+            );
+
+            $result = [];
+            foreach ($data['responses'] ?? [] as $index => $item) {
+                $payload = $this->parseData($item['response']);
+
+                if (! empty($item['id'])) {
+                    // Must belong to THIS batch, otherwise a client could overwrite someone else's row.
+                    $row = $rows->get((int) $item['id'])
+                        ?? throw ValidationException::withMessages([
+                            "responses.$index.id" => ['This response does not belong to the batch.'],
+                        ]);
+
+                    $row->update(['response' => $payload]);
+                } else {
+                    $row = $this->response->create(array_merge($base, ['response' => $payload]));
+                }
+
+                $result[] = ['index' => $index, 'id' => $row->id];
+            }
+
+            return ['batch_no' => $batchNo, 'responses' => $result];
+        });
+    }
+
+    public function assertCanModifyAttachments(Response $response): void
+    {
+        abort_unless((int) $response->user_id === (int) auth()->id(), 403, 'Not your checklist.');
+        $this->assertDraft($response);
+    }
+
+    public function deleteImage(Image $image): void
+    {
+        $response = $this->response->findOrFail($image->response_id);
+        $this->assertCanModifyAttachments($response);
+
+        $fileId = $image->file_id;
+        $image->forceDelete();            // DB first: an orphaned remote file is better than a broken record
+
+        if ($fileId) {                    // rows from before the migration have no file_id
+            try {
+                $this->imageKit->deleteFile($fileId);
+            } catch (\Throwable $e) {
+                \Log::warning("Could not delete ImageKit file {$fileId}: " . $e->getMessage());
+            }
+        }
+    }
+
+    public function submit(int $batchNo): ?array
+    {
+        DB::transaction(function () use ($batchNo) {
+            $rows = $this->response
+                ->where('batch_no', $batchNo)
+                ->withCount('images')          // one query, no N+1
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            abort_if($rows->isEmpty(), 404, 'Batch not found.');
+
+            $first = $rows->first();
+            abort_unless((int) $first->user_id === (int) auth()->id(), 403, 'Not your checklist.');
+            $this->assertDraft($first);
+
+            $errors  = [];
+            $section = $this->resolveChecklistSectionName($first->checklist_id);
+
+            // Unchanged assumption: the completeness count applies to cobs only.
+            if (! in_array($section, ['pests', 'birds'], true)) {
+                $expected = (int) $first->checklist?->countSubItems();
+                if ($expected > 0 && $rows->count() < $expected) {
+                    $errors['responses'] = ["Only {$rows->count()} of {$expected} items are answered."];
+                }
+            }
+
+            // Every response row needs at least one photo, for all sections.
+            $withoutPhoto = $rows->filter(fn (Response $row) => $row->images_count === 0);
+
+            if ($withoutPhoto->isNotEmpty()) {
+                $errors['images'] = [
+                    "{$withoutPhoto->count()} item(s) are missing a photo.",
+                ];
+
+                // Keyed by response id so the frontend can highlight each item.
+                foreach ($withoutPhoto as $row) {
+                    $errors["responses.{$row->id}.images"] = ['A photo is required for this item.'];
+                }
+            }
+
+            if ($errors) {
+                throw ValidationException::withMessages($errors);
+            }
+
+            $this->response->where('batch_no', $batchNo)->update([
+                'is_completed' => true,
+                'end_at'       => now(),
+            ]);
+        });
+
+        return $this->generateSummaryReportByBatchNo($batchNo);
+    }
+
+    private function findOwnedBatch(int $batchNo): Response
+    {
+        $first = $this->response->where('batch_no', $batchNo)->orderBy('id')->first();
+        abort_if(! $first, 404, 'Batch not found.');
+        abort_unless((int) $first->user_id === (int) auth()->id(), 403, 'Not your checklist.');
+
+        return $first;
+    }
+
+    private function assertDraft(Response $response): void
+    {
+        abort_if($response->is_completed, 422, 'This checklist has already been submitted.');
     }
 }

@@ -9,6 +9,7 @@ use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
 use App\Http\Controllers\MergeFormController;
 use App\Http\Controllers\ResponseController;
+use App\Http\Controllers\ResponseDraftController;
 use App\Http\Controllers\ResponseDuplicationController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\WastageController;
@@ -78,6 +79,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('approvers', [UserController::class, 'approvers']);
         Route::get('wastages', [WastageController::class, 'index']);
     });
+
+    Route::post('responses/batches', [ResponseDraftController::class, 'store']);
+    Route::patch('responses/batches/{batchNo}', [ResponseDraftController::class, 'update'])->whereNumber('batchNo');
+    Route::post('responses/batches/{batchNo}/submit', [ResponseDraftController::class, 'submit'])->whereNumber('batchNo');
+    Route::post('responses/{response}/images', [ResponseDraftController::class, 'storeImages'])->whereNumber('response');
+    Route::delete('images/{image}', [ResponseDraftController::class, 'destroyImage'])->whereNumber('image');
 
     Route::resource('questionnaires', ChecklistController::class)->only(['show']);
     Route::get('responses/summary', [ResponseController::class, 'summaryReportByBatchNo']);

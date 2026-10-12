@@ -20,10 +20,10 @@ class ResponseController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'checklist_id'   => ['required', 'integer', 'exists:checklists,id'],
-            'unit_id'        => ['required', 'integer', 'exists:units,id'],
-            'start_at'       => ['required', 'date'],
-            'is_completed'   => ['required', 'boolean'],
+            'checklist_id'   => ['nullable', 'integer', 'exists:checklists,id'],
+            'unit_id'        => ['nullable', 'integer', 'exists:units,id'],
+            'start_at'       => ['nullable', 'date'],
+            'is_completed'   => ['nullable', 'boolean'],
             'batch_no'       => ['nullable', 'integer'],
             'evaluator_id'   => ['nullable', 'integer', 'exists:users,id'],
             'approver_id'    => ['nullable', 'integer', 'exists:users,id'],
@@ -34,8 +34,8 @@ class ResponseController extends Controller
             'notes'          => ['nullable', 'string'],
             'temporal_audit' => ['nullable'],            // tighten once the shape is known
 
-            'response'       => ['required', 'array', 'min:1', 'max:200'],
-            'response.*'     => ['required', 'json'],    // stricter than parseData(); see note below
+            'response'       => ['nullable', 'array', 'min:1', 'max:200'],
+            'response.*'     => ['nullable', 'json'],    // stricter than parseData(); see note below
 
             'image'          => ['sometimes', 'array'],
             'image.*'        => ['array', 'max:5'],      // max images per response
