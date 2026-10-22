@@ -2,29 +2,26 @@
 
 namespace App\Services;
 
-use AllowDynamicProperties;
-use App\Models\AcknowledgementSetting;
 use App\Models\Checklist;
 use App\Models\Image;
 use App\Models\Response;
 use App\Models\Section;
+use App\Models\Submission;
 use App\Models\Unit;
-use App\Models\User;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Gate;
-use ImageKit\ImageKit;
-use Illuminate\Support\Arr;
-use Illuminate\Support\Str;
-use RuntimeException;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use ImageKit\ImageKit;
+use RuntimeException;
 
-#[AllowDynamicProperties]
 class ResponseService
 {
     private Response $response;
     private ImageKit $imageKit;
+
     public function __construct(Response $response)
     {
         $this->response = $response;
@@ -33,9 +30,10 @@ class ResponseService
             config('app.imagekit_private_key'),
             config('app.imagekit_url_endpoint')
         );
-        $this->acknowledgementSetting = AcknowledgementSetting::get();
     }
-    public function getResponses($request) {
+
+    public function getResponses($request)
+    {
         $responses = $this->response->with('user')->useFilters()->get();
         $section = strtolower($request->section);
 
@@ -47,7 +45,9 @@ class ResponseService
             default => $this->formatCobsResponses($responses, $month, $year),
         };
     }
-    public function formatCobsResponses($responses, int $month, int $year) {
+
+    public function formatCobsResponses($responses, int $month, int $year)
+    {
         $batches = $responses->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
             return $this->formatBatchResponse($batchResponses, $batchNo);
         })->values();
@@ -55,7 +55,7 @@ class ResponseService
         $batchesByUnit = $batches->groupBy('unit_id');
 
         return Unit::query()->with([
-            'checkLists' => fn ($query) => $query->withoutTrashed()
+            'checkLists' => fn ($query) => $query->withoutTrashed(),
         ])->get()->mapWithKeys(function ($unit) use ($batchesByUnit, $month, $year) {
             return $this->formatUnitResponse($unit, $batchesByUnit, $month, $year);
         });
@@ -73,10 +73,8 @@ class ResponseService
             ->first()
             ?->checkLists ?? collect();
 
-        // Only pest has a fixed, meaningful "must submit N times" rule.
-        // Birds' period count is now calendar-driven (4 or 5 depending on the
-        // month), so a hardcoded required count no longer applies — skip the
-        // check entirely for birds rather than testing against a stale number.
+        // Only pests has a fixed "must submit N times" rule. Birds' period count is
+        // calendar-driven (4 or 5 depending on the month), so no required count applies.
         $requiredCount = $section === 'birds' ? null : 2;
 
         $userId = data_get($responses->first(), 'user_id') ?? auth()->id();
@@ -112,9 +110,7 @@ class ResponseService
                 ];
             }
 
-            // Birds no longer has a required-count rule, so previous_month_completed
-            // is only computed for pest. Explicitly null (not false) for birds so
-            // the frontend can distinguish "not applicable" from "not completed".
+            // null (not false) for birds, so the frontend can tell "not applicable" from "not completed".
             $previousMonthCompleted = ($requiredCount !== null && $userId)
                 ? $this->checkPreviousMonthCompleted($userId, $checklist->id, $requiredCount)
                 : null;
@@ -131,19 +127,19 @@ class ResponseService
             ];
         });
     }
-    private function formatUnitResponse($unit, $batchesByUnit, int $month, int $year) {
+
+    private function formatUnitResponse($unit, $batchesByUnit, int $month, int $year)
+    {
         $unitBatches = $batchesByUnit->get($unit->id, collect());
         $batchesByWeek = $unitBatches->groupBy('week');
         $checklists = $unit->checkLists;
 
-        // Get first batch to extract user and checklist info
         $firstBatch = $unitBatches->first();
-        $userId = $firstBatch?->user_id ?? null;
+        $userId = $firstBatch['user_id'] ?? null;
 
-        // Check previous month completion for cobs (required: 4 times)
+        // Previous month completion for cobs (required: 4 times)
         $previousMonthCompleted = $this->checkPreviousMonthCompleted($userId, data_get($unit->checkLists->first(), 'id'), 4);
 
-        // Real number of weeks in the given calendar month (e.g. Feb 2026 = 4, most months = 4 or 5)
         $weeksInMonth = Carbon::createFromDate($year, $month, 1)->endOfMonth()->weekOfMonth();
 
         return [
@@ -165,10 +161,11 @@ class ResponseService
             ],
         ];
     }
+
+    /** Same payload as before: response[n] + image[n][m]. */
     public function storeResponse(array $data): ?array
     {
-        $sectionName = $this->resolveChecklistSectionName($data['checklist_id'] ?? null);
-        $responses   = $data['response'] ?? [];
+        $responses = $data['response'] ?? [];
 
         // Ignore image groups with no matching response key (avoids orphan uploads).
         $imageItems = array_intersect_key($data['image'] ?? $data['images'] ?? [], $responses);
@@ -178,7 +175,7 @@ class ResponseService
 
         try {
             // 2. All DB work is atomic.
-            $batchNo = DB::transaction(function () use ($data, $responses, $sectionName, $uploaded) {
+            $batchNo = DB::transaction(function () use ($data, $responses, $uploaded) {
                 $existingBatchNo = $data['batch_no'] ?? null;
 
                 if ($existingBatchNo) {
@@ -188,7 +185,7 @@ class ResponseService
                 }
 
                 $batchNo  = $existingBatchNo ?: $this->generateBatchNo();
-                $baseData = $this->buildBaseResponseData($data, $batchNo, $sectionName);
+                $baseData = $this->buildBaseResponseData($data, $batchNo);
 
                 foreach ($responses as $key => $value) {
                     $response = $this->response->create(array_merge($baseData, [
@@ -199,8 +196,14 @@ class ResponseService
                         Image::create([
                             'response_id' => $response->id,
                             'url'         => $file['url'],
+                            'file_id'     => $file['file_id'],
                         ]);
                     }
+                }
+
+                // The approval steps come from the section's approval flow.
+                if (! empty($data['is_completed'])) {
+                    app(SubmissionWorkflow::class)->finalize((int) $batchNo, (bool) ($data['requires_evaluator'] ?? false));
                 }
 
                 return (int) $batchNo;
@@ -258,7 +261,6 @@ class ResponseService
         return ['url' => $url, 'file_id' => data_get($result, 'result.fileId')];
     }
 
-
     private function discardUploads(array $uploaded): void
     {
         foreach (collect($uploaded)->flatten(1) as $file) {
@@ -272,29 +274,6 @@ class ResponseService
         }
     }
 
-    private function isThirdWeek($startAt): bool
-    {
-        if (!$startAt) {
-            return false;
-        }
-
-        $date = Carbon::parse($startAt);
-        $weekOfMonth = (int) ceil($date->day / 7);
-
-        return $weekOfMonth === 3;
-    }
-    public function processResponseBatch(array $dataItems, array $imageItems, string $fieldName, array $baseData, ImageKit $imageKit)
-    {
-        foreach ($dataItems as $key => $value) {
-            $fieldData = $this->parseData($value);
-
-            $response = $this->response->create(array_merge($baseData, [
-                $fieldName => $fieldData,
-            ]));
-
-            $this->storeImages($imageItems[$key] ?? [], $response->id, $imageKit);
-        }
-    }
     private function parseData($value): array
     {
         if (is_string($value)) {
@@ -307,48 +286,23 @@ class ResponseService
 
         return is_array($value) ? $value : ['value' => $value];
     }
-    private function storeImages($images, int $responseId, ImageKit $imageKit): void
-    {
-        // Ensure $images is always an array
-        $imagesToProcess = !is_array($images) ? [$images] : $images;
 
-        foreach ($imagesToProcess as $image) {
-            if (!$image || !method_exists($image, 'getRealPath')) {
-                continue;
-            }
-
-            try {
-                $fileName = time() . '_' . uniqid() . '_' . $image->getClientOriginalName();
-                $uploadFile = $imageKit->uploadFile([
-                    'file' => fopen($image->getRealPath(), 'r'),
-                    'fileName' => $fileName,
-                ]);
-
-                $url = data_get($uploadFile, 'result.url');
-                if ($url) {
-                    Image::create([
-                        'response_id' => $responseId,
-                        'url' => $url,
-                    ]);
-                }
-            } catch (\Exception $e) {
-                \Log::error('ImageKit upload failed: ' . $e->getMessage());
-            }
-        }
-    }
     private function generateBatchNo()
     {
         return DB::table('responses')->max('batch_no') + 1;
     }
-    public function generateSummaryReportByBatchNo($batchNo) {
+
+    public function generateSummaryReportByBatchNo($batchNo)
+    {
         $response = $this->response->where('batch_no', $batchNo)->get();
 
         return $response->groupBy('batch_no')->map(function ($batchResponses, $batchNo) {
             return $this->formatBatchResponse($batchResponses, $batchNo);
         })->values()->first();
     }
-    private function formatBatchResponse($batchResponses, $batchNo) {
-        $section = strtolower($batchResponses->first()?->section?->name);
+
+    private function formatBatchResponse($batchResponses, $batchNo)
+    {
         $firstResponse = $batchResponses->first();
         $startAt = $firstResponse?->start_at;
         $countSubItems = $firstResponse?->checklist?->countSubItems();
@@ -356,18 +310,39 @@ class ResponseService
         $progress = $countSubItems > 0 ? ($countResponses / $countSubItems) * 100 : 0;
 
         $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses);
-        $signatory1 = $this->formatFieldData($batchResponses, 'evaluate', 'evaluate');
-        $signatory2 = $this->formatFieldData($batchResponses, 'approve', 'approve');
-        $signatory3 = $this->formatFieldData($batchResponses, 'assess', 'assess');
 
-        $status = match (true) {
-            $section === 'pests' => is_null($signatory1) ? 'For Acknowledgement' : 'Done',
-            $section === 'birds' => (is_null($signatory2) || is_null($signatory3)) ? 'For Approval' : 'Done',
-            ! is_null($firstResponse?->parent_response_id) => 'Done',
-            is_null($signatory1) => 'For Acknowledgement',
-            is_null($signatory2), is_null($signatory3) => 'For Approval',
-            default => 'Done',
+        // Approval progress comes only from the submission's steps.
+        $submission = Submission::with('steps.type', 'steps.assignees.user')
+            ->where('legacy_batch_no', $batchNo)->first();
+        $submitted = $submission && ! $submission->isDraft();
+        $steps = $submitted ? $submission->steps : collect();
+
+        $stepOf = fn (string $key) => $steps->first(fn ($s) => $s->type->key === $key);
+
+        $signatoryOf = function (string $key) use ($stepOf) {
+            $step = $stepOf($key);
+            if (! $step || $step->status !== 'done') {
+                return null;
+            }
+            $who = $step->assignees->firstWhere('decision', 'approved') ?? $step->assignees->first();
+
+            return ['name' => $who?->signature_name, "{$key}_image" => $who?->signature_image];
         };
+
+        $personOf = fn (string $key) => $stepOf($key)?->assignees->first();
+        $isDone   = fn (string $key) => $stepOf($key) ? $stepOf($key)->status === 'done' : null;
+
+        $signatory1 = $signatoryOf('evaluate');
+        $signatory2 = $signatoryOf('approve');
+        $signatory3 = $signatoryOf('assess');
+
+        $status = $submitted
+            ? $submission->status()
+            : ($firstResponse?->is_completed ? 'Done' : 'Draft');
+
+        $evaluator = $personOf('evaluate');
+        $approver  = $personOf('approve');
+        $assessor  = $personOf('assess');
 
         return [
             'batch_no' => (int) $batchNo,
@@ -381,16 +356,17 @@ class ResponseService
             'user_id' => $firstResponse?->user_id,
             'user' => $firstResponse?->user?->getFullNameAttribute(),
             'user_signatory' => $firstResponse?->user?->signature,
-            'evaluator_id' => $firstResponse?->evaluator_id,
-            'evaluator' => $firstResponse?->evaluator?->getFullNameAttribute(),
-            'approver_id' => $signatory2 ? $firstResponse?->assessor_id : $firstResponse?->approver_id,
-            'approver' => $signatory2 ? $firstResponse?->assessor?->getFullNameAttribute() : $firstResponse?->approver?->getFullNameAttribute(),
-            'assessor_id' => $firstResponse?->assessor_id,
-            'assessor' => $firstResponse?->assessor?->getFullNameAttribute(),
+            // Kept for the current frontend, now derived from the steps.
+            'evaluator_id' => $evaluator?->user_id,
+            'evaluator' => $evaluator?->user?->getFullNameAttribute(),
+            'approver_id' => $approver?->user_id,
+            'approver' => $approver?->user?->getFullNameAttribute(),
+            'assessor_id' => $assessor?->user_id,
+            'assessor' => $assessor?->user?->getFullNameAttribute(),
             'is_completed' => $firstResponse?->is_completed,
-            'is_evaluated' => $firstResponse?->is_evaluated,
-            'is_approved' => $firstResponse?->is_approved,
-            'is_assessed' => $firstResponse?->is_assessed,
+            'is_evaluated' => $isDone('evaluate'),
+            'is_approved' => $isDone('approve'),
+            'is_assessed' => $isDone('assess'),
             'good_points' => $firstResponse?->good_points,
             'remarks' => $firstResponse?->duplicate_reason ?: $firstResponse?->remarks,
             'notes' => $firstResponse?->notes,
@@ -409,24 +385,23 @@ class ResponseService
             'signatory_2' => $signatory2,
             'signatory_3' => $signatory3,
             'status'      => $status,
+            // Every step in order, so any number of approvers can be shown.
+            'steps' => $steps->map(fn ($s) => [
+                'order'     => $s->step_order,
+                'type'      => $s->type->key,
+                'label'     => $s->label,
+                'status'    => $s->status,
+                'assignees' => $s->assignees->map(fn ($a) => [
+                    'user_id'         => $a->user_id,
+                    'name'            => $a->signature_name ?? $a->user?->getFullNameAttribute(),
+                    'decision'        => $a->decision,
+                    'acted_at'        => $a->acted_at,
+                    'signature_image' => $a->signature_image,
+                ])->values(),
+            ])->values(),
         ];
     }
-    private function formatFieldData($batchResponses, string $fieldName, string $imageFieldName): ?array
-    {
-        $batchNo = $batchResponses->first()?->batch_no;
-        $record = $this->response->newQuery()->where('batch_no', $batchNo)
-            ->whereNotNull($fieldName)
-            ->first();
 
-        if (!$record) return null;
-
-        $value = $record->{$fieldName};
-
-        return [
-            'name' => $value['name'] ?? null,
-            "{$imageFieldName}_image" => $record->images->pluck('url')->first(),
-        ];
-    }
     private function checkPreviousMonthCompleted($userId, $checklistId, $requiredCount): ?bool
     {
         $year = (int) request()->input('year', now()->year);
@@ -435,15 +410,16 @@ class ResponseService
         $previousMonth = Carbon::create($year, $month, 1)->subMonth();
 
         $count = Response::
-            where('checklist_id', $checklistId)
+        where('checklist_id', $checklistId)
             ->where('is_completed', true)
             ->whereMonth('start_at', $previousMonth->month)
             ->whereYear('start_at', $previousMonth->year)
-            ->distinct()              // <-- no argument: standard "distinct count" idiom
+            ->distinct()
             ->count('batch_no');
 
         return $count >= $requiredCount;
     }
+
     private function computeHierarchicalScore($firstResponse, $batchResponses)
     {
         $checklist = $firstResponse?->checklist;
@@ -457,9 +433,6 @@ class ResponseService
         }
 
         // ---- Phase 1: resolve responses & filter out N/A (score <= 0) entries ----
-        // Weights must be computed from *scorable* counts, so we build a filtered
-        // tree first rather than skipping mid-loop (which would silently shrink
-        // the denominator without redistributing weight correctly).
         $filteredCategories = [];
 
         foreach ($categories as $categoryIndex => $category) {
@@ -482,8 +455,6 @@ class ResponseService
                         $subItemIndex
                     );
 
-                    // 0 (or missing/non-numeric) == N/A on the frontend -> exclude
-                    // entirely from both scoring and the item/sub-item counts.
                     if (!is_numeric($responseValue) || (float) $responseValue <= 0) {
                         continue;
                     }
@@ -494,7 +465,6 @@ class ResponseService
                     ];
                 }
 
-                // Item had sub-items, but all were N/A -> drop the whole item.
                 if (empty($filteredSubItems)) {
                     continue;
                 }
@@ -505,7 +475,6 @@ class ResponseService
                 ];
             }
 
-            // Category had items, but none survived filtering -> drop it.
             if (empty($filteredItems)) {
                 continue;
             }
@@ -517,7 +486,6 @@ class ResponseService
         }
 
         if (empty($filteredCategories)) {
-            // Every single item was N/A — nothing to score.
             return ['score' => 0, 'breakdown' => []];
         }
 
@@ -602,8 +570,9 @@ class ResponseService
             'breakdown' => $breakdown,
         ];
     }
-    private function findResponseValue($batchResponses, $categoryIndex, $itemIndex, $subItemIndex) {
-        // Get category name from checklist
+
+    private function findResponseValue($batchResponses, $categoryIndex, $itemIndex, $subItemIndex)
+    {
         $checklist = $batchResponses->first()?->checklist;
         if (!$checklist) return 0;
 
@@ -622,16 +591,13 @@ class ResponseService
 
         $subItemName = $subItems[$subItemIndex]['name'] ?? null;
 
-        // Search for matching response by checklist name, item name, and sub_item name
         foreach ($batchResponses as $response) {
             $resp = $response->response;
 
-            // Match by category name, item name, and sub_item name
             if (isset($resp['checklist']) && isset($resp['item']) && isset($resp['sub_item'])) {
                 if ($resp['checklist'] == $categoryName &&
                     $resp['item'] == $itemName &&
                     $resp['sub_item'] == $subItemName) {
-                    // Return score value (default 0 if not found)
                     return $resp['score'] ?? 0;
                 }
             }
@@ -639,105 +605,48 @@ class ResponseService
 
         return 0;
     }
-    private function ensureArray($data) {
-        // Already an array
+
+    private function ensureArray($data)
+    {
         if (is_array($data)) {
             return $data;
         }
 
-        // Illuminate Collection
         if (is_object($data) && method_exists($data, 'toArray')) {
             return $data->toArray();
         }
 
-        // JSON string
         if (is_string($data)) {
             $decoded = json_decode($data, true);
             return is_array($decoded) ? $decoded : [];
         }
 
-        // Fallback
         return is_object($data) ? (array) $data : [];
     }
-    public function buildBaseResponseData(array $data, ?string $batchNo = null, ?string $sectionName = null): array
+
+    /** Header fields shared by every answer row. No approver data lives here any more. */
+    public function buildBaseResponseData(array $data, ?string $batchNo = null): array
     {
-        $sectionName ??= $this->resolveChecklistSectionName($data['checklist_id'] ?? null);
-
-        if ($sectionName == 'pests' || $sectionName == 'birds') {
-            $acknowledgeSetting = AcknowledgementSetting::with([
-                'users' => fn ($query) => $query->select('id'),
-                'hierarchies' => fn ($query) => $query->select('id'),
-                'sections' => fn ($query) => $query->select('id'),
-            ])->join('sections', 'acknowledgement_settings.section_id', '=', 'sections.id')
-                ->where('sections.name', $sectionName)
-                ->first();
-        }
-
         return [
-            'checklist_id' => $data['checklist_id'] ?? null,
-            'unit_id' => $data['unit_id'] ?? null,
-            'user_id' => auth()->user()->id ?? $data['user_id'] ?? null,
-            'evaluator_id' => $acknowledgeSetting->users->id ?? $data['evaluator_id'] ?? null ,
-            'approver_id' => $acknowledgeSetting->hierarchy[0] ?? $data['approver_id'] ?? null ,
-            'assessor_id' => $acknowledgeSetting->hierarchy[1] ?? $data['assessor_id'] ?? null,
-            'batch_no' => $data['batch_no'] ?? $batchNo,
-            'good_points' => $data['good_points'] ?? null,
-            'remarks' => $data['remarks'] ?? null,
-            'notes' => $data['notes'] ?? null,
+            'checklist_id'   => $data['checklist_id'] ?? null,
+            'unit_id'        => $data['unit_id'] ?? null,
+            'user_id'        => auth()->user()->id ?? $data['user_id'] ?? null,
+            'batch_no'       => $data['batch_no'] ?? $batchNo,
+            'good_points'    => $data['good_points'] ?? null,
+            'remarks'        => $data['remarks'] ?? null,
+            'notes'          => $data['notes'] ?? null,
             'temporal_audit' => $data['temporal_audit'] ?? null,
-            'start_at' => $data['start_at'] ?? Carbon::now(),
-            'is_completed' => $data['is_completed'] ?? null,
-            'is_evaluated' => $sectionName == 'birds' ? 1 : null,
-            'end_at' => isset($data['is_completed']) && $data['is_completed'] ? Carbon::now() : null,
+            'start_at'       => $data['start_at'] ?? Carbon::now(),
+            'is_completed'   => $data['is_completed'] ?? null,
+            'end_at'         => isset($data['is_completed']) && $data['is_completed'] ? Carbon::now() : null,
         ];
     }
-    public function evaluate($data) {
 
-        $evaluator = User::whereId($data['evaluator_id'])->with([
-            'acknowledgement' => fn ($item) => $item->select(['user_id', 'hierarchy']),
-        ])->first();
-
-        // Policy check
-        Gate::authorize('acknowledge', $evaluator);
-
-        $hierarchy = $evaluator->acknowledgement->hierarchy ?? [];
-
-        $approver_id = $hierarchy[0] ?? null;
-        $assessor_id = $hierarchy[1] ?? null;
-
-        $baseResponseData = $this->buildBaseResponseData($data, $data['batch_no']);
-
-        // Process evaluations
-        $this->processResponseBatch(
-            $data['evaluate'] ?? [],
-            $data['evaluate_image'] ?? [],
-            'evaluate',
-            $baseResponseData,
-            $this->imageKit
-        );
-
-        $this->response->newQuery()->where('batch_no', $data['batch_no'])->update([
-            'is_evaluated' => true,
-            'evaluator_id' => $evaluator->id,
-            'approver_id' => $approver_id,
-            'assessor_id' => $assessor_id,
-        ]);
-    }
-    public function assess($data) {
-        $baseResponseData = $this->buildBaseResponseData($data, $data['batch_no']);
-
-        $this->processResponseBatch(
-            $data['assess'] ?? [],
-            $data['assess_image'] ?? [],
-            'assess',
-            $baseResponseData,
-            $this->imageKit
-        );
-    }
     public function getImageKit()
     {
         return $this->imageKit;
     }
+
     public function mergeResponse(array $data): void
     {
         $month = (int) ($data['month'] ?? 0);
@@ -775,6 +684,7 @@ class ResponseService
                 $copy = $response->replicate();
 
                 $copy->batch_no = $newBatchNo;
+                $copy->submission_id = null;   // the copy must not point at the original's submission
                 $copy->start_at = Carbon::parse($response->start_at)->addDays(7);
                 $copy->end_at   = $response->end_at
                     ? Carbon::parse($response->end_at)->addDays(7)
@@ -790,22 +700,7 @@ class ResponseService
             });
         });
     }
-    protected function resolveEvaluatorId(?int $checklistId): ?int
-    {
-        if (! $checklistId) {
-            return null;
-        }
 
-        $sectionId = Checklist::find($checklistId)?->section_id;
-
-        if (! $sectionId) {
-            return null;
-        }
-
-        return $this->acknowledgementSetting
-            ->firstWhere('section_id', $sectionId)
-            ?->user_id;
-    }
     private function resolveChecklistSectionName(?int $checklistId): ?string
     {
         if (!$checklistId) {
@@ -818,6 +713,7 @@ class ResponseService
             ? strtolower($checklist->section->name)
             : null;
     }
+
     public function additionalAttachment(UploadedFile|array $images, int $responseId): array
     {
         $response = $this->response->findOrFail($responseId);
@@ -850,14 +746,13 @@ class ResponseService
         }
 
         $uploaded = [];
-        $saved    = [];
 
         try {
             foreach ($valid as $image) {
                 $uploaded[] = $this->uploadToImageKit($image);
             }
 
-            $saved = DB::transaction(function () use ($response, $uploaded) {
+            return DB::transaction(function () use ($response, $uploaded) {
                 return collect($uploaded)->map(function (array $file) use ($response) {
                     $image = Image::create([
                         'response_id' => $response->id,
@@ -873,22 +768,17 @@ class ResponseService
             \Log::error("additionalAttachment failed (response_id: {$responseId}): " . $e->getMessage());
             throw $e;
         }
-
-        return $saved;   // return type: array<int, array{id: int, url: string}>
     }
 
-    public function truncateResponse() {
+    public function truncateResponse()
+    {
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
 
         DB::table('images')->truncate();
         DB::table('responses')->truncate();
-//        DB::table('checklists')->truncate();
-//        DB::table('acknowledgement_settings')->truncate();
-//        DB::table('infestation_levels')->truncate();
-//        DB::table('wastages')->truncate();
-//        DB::table('scores')->truncate();
-//        DB::table('sections')->truncate();
-//        DB::table('pests')->truncate();
+        DB::table('submission_step_assignees')->truncate();
+        DB::table('submission_steps')->truncate();
+        DB::table('submissions')->truncate();
 
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
@@ -896,13 +786,11 @@ class ResponseService
     /** @return array{batch_no: int, responses: array<int, array{index: int, id: int}>} */
     public function createDraft(array $data): array
     {
-        $sectionName = $this->resolveChecklistSectionName($data['checklist_id'] ?? null);
-
-        return DB::transaction(function () use ($data, $sectionName) {
+        return DB::transaction(function () use ($data) {
             $batchNo = $this->generateBatchNo();
 
             $base = array_merge(
-                $this->buildBaseResponseData($data, $batchNo, $sectionName),
+                $this->buildBaseResponseData($data, $batchNo),
                 ['is_completed' => false, 'end_at' => null]
             );
 
@@ -928,14 +816,13 @@ class ResponseService
 
             $header = Arr::only($data, ['start_at', 'good_points', 'remarks', 'notes', 'temporal_audit']);
             if ($header) {
-                $rows->each(fn (Response $row) => $row->update($header));  // goes through model casts
+                $rows->each(fn (Response $row) => $row->update($header));
             }
 
             $base = array_merge(
                 $first->only([
-                    'checklist_id', 'unit_id', 'user_id', 'evaluator_id', 'approver_id',
-                    'assessor_id', 'batch_no', 'good_points', 'remarks', 'notes',
-                    'temporal_audit', 'start_at', 'is_evaluated',
+                    'checklist_id', 'unit_id', 'user_id', 'batch_no', 'good_points',
+                    'remarks', 'notes', 'temporal_audit', 'start_at',
                 ]),
                 $header,
                 ['is_completed' => false, 'end_at' => null]
@@ -978,7 +865,7 @@ class ResponseService
         $fileId = $image->file_id;
         $image->forceDelete();            // DB first: an orphaned remote file is better than a broken record
 
-        if ($fileId) {                    // rows from before the migration have no file_id
+        if ($fileId) {
             try {
                 $this->imageKit->deleteFile($fileId);
             } catch (\Throwable $e) {
@@ -992,7 +879,7 @@ class ResponseService
         DB::transaction(function () use ($batchNo) {
             $rows = $this->response
                 ->where('batch_no', $batchNo)
-                ->withCount('images')          // one query, no N+1
+                ->withCount('images')
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
@@ -1006,7 +893,7 @@ class ResponseService
             $errors  = [];
             $section = $this->resolveChecklistSectionName($first->checklist_id);
 
-            // Unchanged assumption: the completeness count applies to cobs only.
+            // Completeness count applies to cobs only.
             if (! in_array($section, ['pests', 'birds'], true)) {
                 $expected = (int) $first->checklist?->countSubItems();
                 if ($expected > 0 && $rows->count() < $expected) {
@@ -1014,19 +901,8 @@ class ResponseService
                 }
             }
 
-            // Every response row needs at least one photo, for all sections.
-            $withoutPhoto = $rows->filter(fn (Response $row) => $row->images_count === 0);
-
-            if ($withoutPhoto->isNotEmpty()) {
-                $errors['images'] = [
-                    "{$withoutPhoto->count()} item(s) are missing a photo.",
-                ];
-
-                // Keyed by response id so the frontend can highlight each item.
-                foreach ($withoutPhoto as $row) {
-                    $errors["responses.{$row->id}.images"] = ['A photo is required for this item.'];
-                }
-            }
+            // Photo-required rule is currently switched off (it was commented out in your version).
+            // To enforce it again, filter $rows on images_count === 0 and add the errors here.
 
             if ($errors) {
                 throw ValidationException::withMessages($errors);
@@ -1036,6 +912,8 @@ class ResponseService
                 'is_completed' => true,
                 'end_at'       => now(),
             ]);
+
+            app(SubmissionWorkflow::class)->finalize($batchNo);
         });
 
         return $this->generateSummaryReportByBatchNo($batchNo);
@@ -1053,5 +931,15 @@ class ResponseService
     private function assertDraft(Response $response): void
     {
         abort_if($response->is_completed, 422, 'This checklist has already been submitted.');
+    }
+
+    public function uploadSignature(UploadedFile $file): array
+    {
+        return $this->uploadToImageKit($file);   // ['url', 'file_id']
+    }
+
+    public function discardSignature(array $uploaded): void
+    {
+        $this->discardUploads([[$uploaded]]);    // discardUploads expects a list of lists
     }
 }

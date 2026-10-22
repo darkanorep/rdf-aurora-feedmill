@@ -25,21 +25,16 @@ class ResponseController extends Controller
             'start_at'       => ['nullable', 'date'],
             'is_completed'   => ['nullable', 'boolean'],
             'batch_no'       => ['nullable', 'integer'],
-            'evaluator_id'   => ['nullable', 'integer', 'exists:users,id'],
-            'approver_id'    => ['nullable', 'integer', 'exists:users,id'],
-            'assessor_id'    => ['nullable', 'integer', 'exists:users,id'],
-
             'good_points'    => ['nullable', 'string'],
             'remarks'        => ['nullable', 'string'],
             'notes'          => ['nullable', 'string'],
             'temporal_audit' => ['nullable'],            // tighten once the shape is known
-
             'response'       => ['nullable', 'array', 'min:1', 'max:200'],
             'response.*'     => ['nullable', 'json'],    // stricter than parseData(); see note below
-
             'image'          => ['sometimes', 'array'],
             'image.*'        => ['array', 'max:5'],      // max images per response
             'image.*.*'      => ['file', 'mimes:jpg,jpeg,png,webp', 'max:5120'], // KB, tune this
+            'requires_evaluator' => ['nullable', 'boolean']
         ]);
 
         $response = $this->responseService->storeResponse($data);

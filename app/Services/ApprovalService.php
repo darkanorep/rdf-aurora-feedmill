@@ -2,66 +2,63 @@
 
 namespace App\Services;
 
-use App\Models\AcknowledgementSetting;
 use App\Models\Response;
-use App\Models\Unit;
+use App\Models\Submission;
+use App\Models\SubmissionStep;
+use App\Models\SubmissionStepAssignee;
 use Carbon\Carbon;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 
 class ApprovalService
 {
-    private ResponseService $responseService;
-
-    public function __construct(ResponseService $responseService)
-    {
-        $this->responseService = $responseService;
-    }
+    public function __construct(
+        private ResponseService $responseService,
+        private SubmissionWorkflow $workflow,
+    ) {}
 
     /**
-     * Builds the query for responses relevant to $userId across all three
-     * review stages (evaluate/approve/assess), filtered by pending vs history.
-     * Both getResponses() and statusCount() must use this — do not
-     * re-implement this condition inline elsewhere, or the two will drift
-     * out of sync again (as they did before this refactor).
+     * Submission ids where the user has an open step (pending),
+     * or has already signed one (history, permanent).
      */
-    private function pendingOrHistoryQuery(int $userId, bool $isPending)
+    private function submissionIdsFor(int $userId, bool $isPending): Collection
     {
-        return Response::query()
-            ->join('checklists', 'responses.checklist_id', '=', 'checklists.id')
-            ->join('sections', 'checklists.section_id', '=', 'sections.id')
-            ->where(function ($query) use ($userId, $isPending) {
-                $query->where(function ($query) use ($userId, $isPending) {
-                    $query->where('responses.evaluator_id', $userId);
-                    $isPending
-                        ? $query->whereNull('responses.is_evaluated')->whereNull('responses.is_approved')->whereNull('responses.is_assessed')
-                        : $query->where('responses.is_evaluated', true)->whereNull('responses.is_approved')->whereNull('responses.is_assessed');
-                })->orWhere(function ($query) use ($userId, $isPending) {
-                    $query->where('responses.approver_id', $userId)
-                        ->where('responses.is_completed', true)
-                        ->where('sections.name', '!=', 'pests');
-                    $isPending
-                        ? $query->whereNull('responses.is_approved')->where('responses.is_evaluated', true)
-                        : $query->where('responses.is_approved', true)->whereNull('responses.is_assessed');
-                })->orWhere(function ($query) use ($userId, $isPending) {
-                    $query->where('responses.assessor_id', $userId)
-                        ->where('responses.is_completed', true)
-                        ->where('sections.name', '!=', 'pests');
-                    $isPending
-                        ? $query->where('responses.is_approved', true)->whereNull('responses.is_assessed')
-                        : $query->where('responses.is_assessed', true)->where('responses.is_evaluated', false)->where('responses.is_approved', false);
-                });
-            });
+        $assignees = $isPending
+            ? SubmissionStepAssignee::actionable()->where('submission_step_assignees.user_id', $userId)
+            : SubmissionStepAssignee::where('user_id', $userId)->whereNotNull('decision');
+
+        return SubmissionStep::whereIn('id', $assignees->select('submission_step_id'))
+            ->pluck('submission_id')
+            ->unique();
+    }
+
+    /** Batch numbers for the pending or history list. getResponses() and statusCount() both rely on this. */
+    public function batchNosFor(int $userId, bool $isPending): Collection
+    {
+        return Submission::whereIn('id', $this->submissionIdsFor($userId, $isPending))
+            ->whereNotNull('legacy_batch_no')
+            ->pluck('legacy_batch_no');
     }
 
     public function getResponses($request)
     {
-        $status = $request->input('status');
-        $userId = auth()->id();
-        $isPending = $status == 'pending';
+        $isPending = $request->input('status') === 'pending';
 
-        $month = $request->month ?? Carbon::now()->month;
-        $year  = $request->year ?? Carbon::now()->year;
+        $month = (int) ($request->month ?? Carbon::now()->month);
+        $year  = (int) ($request->year ?? Carbon::now()->year);
 
-        $responses = $this->pendingOrHistoryQuery($userId, $isPending)
+        $batchNos = $this->batchNosFor(auth()->id(), $isPending);
+
+        if ($batchNos->isEmpty()) {
+            return collect();
+        }
+
+        // Same joins as before, in case useFilters() filters on checklist or section columns.
+        $responses = Response::query()
+            ->join('checklists', 'responses.checklist_id', '=', 'checklists.id')
+            ->join('sections', 'checklists.section_id', '=', 'sections.id')
+            ->whereIn('responses.batch_no', $batchNos)
             ->with(['section', 'images'])
             ->select('responses.*')
             ->useFilters()
@@ -72,7 +69,22 @@ class ApprovalService
             return collect();
         }
 
-        $sectionName = strtolower($responses->first()->section?->name) ?? '';
+        // Use the section the caller asked for. Only fall back to the first batch when none was given.
+        $requested = strtolower((string) $request->input('section'));
+
+        if ($requested !== '') {
+            $responses = $responses
+                ->filter(fn ($r) => strtolower((string) $r->section?->name) === $requested)
+                ->values();
+
+            if ($responses->isEmpty()) {
+                return collect();
+            }
+        }
+
+        $sectionName = $requested !== ''
+            ? $requested
+            : strtolower((string) $responses->first()->section?->name);
 
         return match ($sectionName) {
             'pests', 'birds' => $this->responseService->formatPestAndBirdsResponses($responses, $sectionName, $month, $year),
@@ -80,157 +92,87 @@ class ApprovalService
         };
     }
 
-    public function statusCount()
+    public function statusCount(): array
     {
-        $userId = auth()->id();
+        $ids = $this->submissionIdsFor(auth()->id(), true);
 
-        $sectionCounts = $this->pendingOrHistoryQuery($userId, isPending: true)
-            ->select('sections.name as section_name', 'responses.batch_no')
-            ->distinct()
-            ->get()
-            // A batch can match more than one of the three OR-branches only
-            // if it's simultaneously pending under two different roles for
-            // the same user — unique() by batch_no ensures it's only
-            // counted once toward the total either way.
-            ->unique('batch_no')
-            ->groupBy(fn ($row) => strtoupper($row->section_name ?? 'UNKNOWN'))
-            ->map(fn ($group) => $group->count());
+        $sectionCounts = Submission::query()
+            ->whereIn('submissions.id', $ids)
+            ->join('checklists', 'checklists.id', '=', 'submissions.checklist_id')
+            ->join('sections', 'sections.id', '=', 'checklists.section_id')
+            ->selectRaw('sections.name as section_name, count(*) as total')
+            ->groupBy('sections.name')
+            ->pluck('total', 'section_name')
+            ->mapWithKeys(fn ($total, $name) => [strtoupper($name ?? 'UNKNOWN') => (int) $total]);
 
-        $allSections = ['COBS', 'PESTS', 'BIRDS'];
-        foreach ($allSections as $section) {
+        foreach (['COBS', 'PESTS', 'BIRDS'] as $section) {
             if (! $sectionCounts->has($section)) {
                 $sectionCounts[$section] = 0;
             }
         }
 
-        return [
-            'pending' => [
-                'TOTAL' => $sectionCounts->sum(),
-                ...$sectionCounts->toArray(),
-            ],
-        ];
+        return ['pending' => ['TOTAL' => $sectionCounts->sum(), ...$sectionCounts->toArray()]];
     }
 
-    public function approveResponses(array $data) {
-        $batchNo = $data['batch_no'];
-        $section = $data['section'];
+    /**
+     * One action for every stage. The server finds the caller's own open step,
+     * so the stage and the signer come from the data, not from the payload.
+     */
+    public function approveResponses(array $data): void
+    {
+        $batchNo = (int) $data['batch_no'];
 
-        $responses = Response::where('batch_no', $batchNo)->get();
+        // Authorize BEFORE touching ImageKit, so a user with no turn can't upload anything.
+        $this->workflow->assertCanAct($batchNo);
 
-        if ($responses->isEmpty()) {
-            return;
+        $sig = $this->extractSignature($data);
+        $uploaded = null;
+
+        try {
+            if ($sig['file']) {
+                $uploaded = $this->responseService->uploadSignature($sig['file']);
+            }
+
+            $this->workflow->act($batchNo, [
+                'name'  => $sig['name'],
+                'image' => $uploaded['url'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            if ($uploaded) {
+                $this->responseService->discardSignature($uploaded);   // don't orphan the file
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Reads the existing payload shape: evaluate[0] / approve[0] / assess[0] plus *_image[0][0].
+     * The image is read even when the JSON part is missing.
+     */
+    private function extractSignature(array $data): array
+    {
+        foreach (['evaluate', 'approve', 'assess'] as $field) {
+            $items = $data[$field] ?? [];
+            $imageGroup = request()->file("{$field}_image");
+
+            if (! $items && ! $imageGroup) {
+                continue;
+            }
+
+            $key = $items
+                ? array_key_first($items)
+                : (is_array($imageGroup) ? array_key_first($imageGroup) : 0);
+
+            $raw = $items[$key] ?? null;
+            $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
+            $image = Arr::first(Arr::flatten(Arr::wrap($imageGroup)));
+
+            return [
+                'name' => is_array($decoded) ? ($decoded['name'] ?? null) : null,
+                'file' => $image instanceof UploadedFile ? $image : null,
+            ];
         }
 
-        $sample = $responses->first(); // only for checking status
-        $baseResponseData = $this->responseService->buildBaseResponseData($data);
-        $signatory2Filled = Response::where('batch_no', $batchNo)
-            ->whereNotNull('approve')
-            ->exists();
-
-        switch ($section) {
-
-            case 'pests':
-
-                if (!$sample->is_approved) {
-                    Response::where('batch_no', $batchNo)->update(['is_approved' => true]);
-                }
-
-                if (!empty($data['approve'] ?? [])) {
-                    $this->responseService->processResponseBatch(
-                        $data['approve'],
-                        $data['approve_image'] ?? [],
-                        'approve',
-                        $baseResponseData,
-                        $this->responseService->getImageKit()
-                    );
-                }
-
-                break;
-            case 'birds':
-
-
-
-                if (!$sample->is_evaluated) {
-                    Response::where('batch_no', $batchNo)
-                        ->update(['is_evaluated' => true]);
-
-                } elseif (!$sample->is_approved) {
-
-                    Response::where('batch_no', $batchNo)
-                        ->update(['is_approved' => true]);
-
-                } elseif (!$sample->is_assessed) {
-
-                    Response::where('batch_no', $batchNo)
-                        ->update(['is_assessed' => true]);
-
-                }
-
-                if (!empty($data['approve'] ?? [])) {
-                    if ($signatory2Filled) {
-                        // Redirect approve payload to assess
-                        $this->responseService->processResponseBatch(
-                            $data['approve'],
-                            $data['approve_image'] ?? [],
-                            'assess',
-                            $baseResponseData,
-                            $this->responseService->getImageKit()
-                        );
-
-                        Response::where('batch_no', $batchNo)->update(['is_assessed' => true]);
-                    } else {
-                        $this->responseService->processResponseBatch(
-                            $data['approve'],
-                            $data['approve_image'] ?? [],
-                            'approve',
-                            $baseResponseData,
-                            $this->responseService->getImageKit()
-                        );
-
-                        Response::where('batch_no', $batchNo)->update(['is_approved' => true]);
-                    }
-                }
-                break;
-
-            default:
-
-                if (!empty($data['approve'] ?? [])) {
-                    if ($signatory2Filled) {
-                        // Redirect approve payload to assess
-                        $this->responseService->processResponseBatch(
-                            $data['approve'],
-                            $data['approve_image'] ?? [],
-                            'assess',
-                            $baseResponseData,
-                            $this->responseService->getImageKit()
-                        );
-
-                        Response::where('batch_no', $batchNo)->update(['is_assessed' => true]);
-                    } else {
-                        $this->responseService->processResponseBatch(
-                            $data['approve'],
-                            $data['approve_image'] ?? [],
-                            'approve',
-                            $baseResponseData,
-                            $this->responseService->getImageKit()
-                        );
-
-                        Response::where('batch_no', $batchNo)->update(['is_approved' => true]);
-                    }
-                }
-
-                if (!empty($data['assess'] ?? [])) {
-                    $this->responseService->processResponseBatch(
-                        $data['assess'],
-                        $data['assess_image'] ?? [],
-                        'assess',
-                        $baseResponseData,
-                        $this->responseService->getImageKit()
-                    );
-
-                    Response::where('batch_no', $batchNo)->update(['is_assessed' => true]);
-                }
-                break;
-        }
+        return ['name' => null, 'file' => null];
     }
 }

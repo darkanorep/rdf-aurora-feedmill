@@ -6,7 +6,6 @@ use App\Models\Role;
 use App\Models\Section;
 use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class AcknowledgementSettingRequest extends FormRequest
 {
@@ -22,24 +21,24 @@ class AcknowledgementSettingRequest extends FormRequest
     {
         return [
             'name' => 'required|string',
-            'user_id' => [
-                Rule::requiredIf(fn () => $this->input('section') === Section::BIRDS),
-                'integer',
-                'exists:users,id',
-            ],
-            'hierarchy' => 'nullable|array',
-            'hierarchy.*' => [
-                'nullable',
-                'integer',
-                'exists:users,id'
-            ],
+            'hierarchy'   => ['required', 'array', 'min:1'],
+            'hierarchy.*' => ['required', function ($attribute, $value, $fail) {
+                $ids = is_array($value) ? $value : [$value];
+                foreach ($ids as $id) {
+                    if (! is_numeric($id) || ! \App\Models\User::whereKey($id)->exists()) {
+                        $fail('Each approval level must be a user id or a list of user ids.');
+                        return;
+                    }
+                }
+            }],
+            'evaluator_ids'   => ['nullable', 'array'],
+            'evaluator_ids.*' => ['integer', 'distinct', 'exists:users,id'],
             'section_id' => 'required|integer|exists:sections,id',
         ];
     }
 
     public function attributes() {
         return [
-            'user_id' =>  'User',
             'section_id' =>  'Section'
         ];
     }

@@ -1,15 +1,14 @@
 <?php
 
 use App\Http\Controllers\AcknowledgementSettingController;
+use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\AssessController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
-use App\Http\Controllers\MergeFormController;
 use App\Http\Controllers\ResponseController;
-use App\Http\Controllers\ResponseDraftController;
 use App\Http\Controllers\ResponseDuplicationController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\WastageController;
@@ -22,11 +21,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\InspectionAreaPestController;
 use App\Http\Controllers\InspectionAreaInfestationLevelController;
 use App\Http\Controllers\ScoreController;
-use App\Http\Controllers\ApprovalController;
 
-// Route::get('/user', function (Request $request) {
-//     return $request->user();
-// })->middleware('auth:sanctum');
 
 Route::post('login', [AuthController::class, 'login']);
 
@@ -80,11 +75,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('wastages', [WastageController::class, 'index']);
     });
 
-    Route::post('responses/batches', [ResponseDraftController::class, 'store']);
-    Route::patch('responses/batches/{batchNo}', [ResponseDraftController::class, 'update'])->whereNumber('batchNo');
-    Route::post('responses/batches/{batchNo}/submit', [ResponseDraftController::class, 'submit'])->whereNumber('batchNo');
-    Route::post('responses/{response}/images', [ResponseDraftController::class, 'storeImages'])->whereNumber('response');
-    Route::delete('images/{image}', [ResponseDraftController::class, 'destroyImage'])->whereNumber('image');
 
     Route::resource('questionnaires', ChecklistController::class)->only(['show']);
     Route::get('responses/summary', [ResponseController::class, 'summaryReportByBatchNo']);
@@ -96,14 +86,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::resource('responses', ResponseController::class);
 
     //APPROVAL
+    Route::get('approvals', [ApprovalController::class, 'index']);
     Route::post('approvals/approve', [ApprovalController::class, 'approve']);
-    Route::get('approvals/status-count', [ApprovalController::class, 'countStatus']);
-    Route::resource('approvals', ApprovalController::class);
+    Route::get('approvals/count-status', [ApprovalController::class, 'countStatus']);   // use your original path
 
-
-    //FINAL APPROVAL
-    Route::post('assess/assess', [AssessController::class, 'asses']);
-    Route::resource('assess', AssessController::class);
 
     Route::post('logout', [AuthController::class, 'logout']);
     Route::put('change-password', [AuthController::class, 'changePassword']);

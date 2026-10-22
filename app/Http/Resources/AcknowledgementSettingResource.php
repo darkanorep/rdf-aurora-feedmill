@@ -17,15 +17,16 @@ class AcknowledgementSettingResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'evaluator' => $this->evaluators->map(fn($user) => [
+                'id' => $user->id,
+                'name' => $user->getFullNameAttribute(),
+                'role' => $user->role->name,
+            ]),
             'hierarchy' => $this->hierarchies->map(fn($user) => [
                 'id' => $user->id,
                 'name' => $user->getFullNameAttribute(),
                 'role' => $user->role->name,
             ]),
-            'user' => [
-                'id' => $this->users->id,
-                'name' => $this->users->getFullNameAttribute()
-            ],
             'sections' => [
                 'id' => $this->sections->id ?? null,
                 'name' => $this->sections->name ?? null,

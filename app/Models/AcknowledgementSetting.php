@@ -13,18 +13,25 @@ class AcknowledgementSetting extends Model
     use SoftDeletes, HasJsonRelationships, Filterable;
 
     protected $guarded = [];
-    protected $casts = [
-        'hierarchy' => 'json',
-    ];
+    protected $casts = ['hierarchy' => 'array', 'evaluator_ids' => 'array'];
 
     protected $default_filters = AcknowledgementSettingFilter::class;
 
-    public function users() {
-        return $this->belongsTo(User::class, 'user_id');
+    protected static function booted(): void
+    {
+        $sync = fn ($setting) => app(\App\Services\ApprovalFlowSync::class)->sync($setting);
+
+        static::saved($sync);
+        static::deleted($sync);
+        static::restored($sync);
     }
 
     public function hierarchies() {
         return $this->belongsToJson(User::class, 'hierarchy');
+    }
+
+    public function evaluators() {
+        return $this->belongsToJson(User::class, 'evaluator_ids');
     }
 
     public function sections() {
