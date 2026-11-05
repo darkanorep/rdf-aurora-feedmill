@@ -167,15 +167,37 @@ class ResponseService
     {
         $responses = $data['response'] ?? [];
 
+        // A signed evaluator only makes sense on a submitted checklist.
+        if (! empty($data['evaluator_name']) && empty($data['is_completed'])) {
+            throw ValidationException::withMessages([
+                'evaluator_name' => ['The evaluator can only sign when the checklist is submitted (is_completed=1).'],
+            ]);
+        }
+
         // Ignore image groups with no matching response key (avoids orphan uploads).
         $imageItems = array_intersect_key($data['image'] ?? $data['images'] ?? [], $responses);
 
         // 1. Slow network work first, outside the transaction.
         $uploaded = $this->uploadImageGroups($imageItems);
 
+        $signature = null;
+        try {
+            if (! empty($data['evaluator_name']) && ($data['evaluator_signature'] ?? null) instanceof UploadedFile) {
+                $signature = $this->uploadToImageKit($data['evaluator_signature']);   // ['url', 'file_id']
+            }
+        } catch (\Throwable $e) {
+            $this->discardUploads($uploaded);
+            throw $e;
+        }
+
+        // The evaluator is free text: a typed name and a signature image, no user account.
+        $evaluatorSignature = $signature
+            ? ['name' => trim($data['evaluator_name']), 'image' => $signature['url']]
+            : null;
+
         try {
             // 2. All DB work is atomic.
-            $batchNo = DB::transaction(function () use ($data, $responses, $uploaded) {
+            $batchNo = DB::transaction(function () use ($data, $responses, $uploaded, $evaluatorSignature) {
                 $existingBatchNo = $data['batch_no'] ?? null;
 
                 if ($existingBatchNo) {
@@ -203,13 +225,16 @@ class ResponseService
 
                 // The approval steps come from the section's approval flow.
                 if (! empty($data['is_completed'])) {
-                    app(SubmissionWorkflow::class)->finalize((int) $batchNo, (bool) ($data['requires_evaluator'] ?? false));
+                    app(SubmissionWorkflow::class)->finalize((int) $batchNo, $evaluatorSignature);
                 }
 
                 return (int) $batchNo;
             });
         } catch (\Throwable $e) {
             $this->discardUploads($uploaded);   // don't leave orphans in ImageKit
+            if ($signature) {
+                $this->discardSignature($signature);
+            }
             throw $e;
         }
 
@@ -357,16 +382,16 @@ class ResponseService
             'user' => $firstResponse?->user?->getFullNameAttribute(),
             'user_signatory' => $firstResponse?->user?->signature,
             // Kept for the current frontend, now derived from the steps.
-            'evaluator_id' => $evaluator?->user_id,
-            'evaluator' => $evaluator?->user?->getFullNameAttribute(),
-            'approver_id' => $approver?->user_id,
-            'approver' => $approver?->user?->getFullNameAttribute(),
-            'assessor_id' => $assessor?->user_id,
-            'assessor' => $assessor?->user?->getFullNameAttribute(),
+            'evaluator_id' => $evaluator?->user_id,   // null for a free-text evaluator
+            'evaluator'    => $evaluator?->signature_name ?? $evaluator?->user?->getFullNameAttribute(),
+//            'approver_id' => $approver?->user_id,
+//            'approver' => $approver?->user?->getFullNameAttribute(),
+//            'assessor_id' => $assessor?->user_id,
+//            'assessor' => $assessor?->user?->getFullNameAttribute(),
             'is_completed' => $firstResponse?->is_completed,
-            'is_evaluated' => $isDone('evaluate'),
-            'is_approved' => $isDone('approve'),
-            'is_assessed' => $isDone('assess'),
+//            'is_evaluated' => $isDone('evaluate'),
+//            'is_approved' => $isDone('approve'),
+//            'is_assessed' => $isDone('assess'),
             'good_points' => $firstResponse?->good_points,
             'remarks' => $firstResponse?->duplicate_reason ?: $firstResponse?->remarks,
             'notes' => $firstResponse?->notes,
@@ -381,9 +406,9 @@ class ResponseService
                     'images' => $response->images->pluck('url'),
                 ];
             })->values(),
-            'signatory_1' => $signatory1,
-            'signatory_2' => $signatory2,
-            'signatory_3' => $signatory3,
+//            'signatory_1' => $signatory1,
+//            'signatory_2' => $signatory2,
+//            'signatory_3' => $signatory3,
             'status'      => $status,
             // Every step in order, so any number of approvers can be shown.
             'steps' => $steps->map(fn ($s) => [

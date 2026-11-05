@@ -8,39 +8,30 @@ use App\Models\SubmissionStep;
 use App\Models\SubmissionStepAssignee;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Models\ApprovalStepType;
 
 final class SubmissionWorkflow
 {
     public function __construct(private readonly ApprovalFlowResolver $resolver) {}
 
     /** Called when a batch is submitted: creates the submission and snapshots every step as pending. */
-    public function finalize(int $batchNo, bool $requiresEvaluator = false): Submission
+    public function finalize(int $batchNo, ?array $evaluatorSignature = null): Submission
     {
-        return DB::transaction(function () use ($batchNo, $requiresEvaluator) {
+        return DB::transaction(function () use ($batchNo, $evaluatorSignature) {
             $first = Response::where('batch_no', $batchNo)->orderBy('id')->first();
             abort_if(! $first, 404, 'Batch not found.');
             abort_if(! $first->checklist, 422, 'This batch has no valid checklist.');
 
+            // Review has started once an approver has acted. An evaluator signed at submit doesn't count.
             $existing = Submission::where('legacy_batch_no', $batchNo)->lockForUpdate()->first();
             abort_if(
-                $existing && $existing->steps()->where('status', '!=', 'pending')->exists(),
+                $existing && $existing->steps()->where('phase', 'post_submit')->where('status', '!=', 'pending')->exists(),
                 422,
                 'This checklist is already in review and cannot be resubmitted.'
             );
 
             $flow = $this->resolver->resolve($first->checklist);
-
-            if ($requiresEvaluator && ! $flow->steps->contains(fn ($s) => $s->is_optional)) {
-                throw ValidationException::withMessages([
-                    'requires_evaluator' => ['No evaluator is configured for this checklist. Contact the administrator.'],
-                ]);
-            }
-
-            // Steps that apply to THIS submission: the evaluator is skipped unless required.
-            $applicable = $flow->steps
-                ->sortBy('step_order')
-                ->reject(fn ($s) => $s->is_optional && ! $requiresEvaluator)
-                ->values();
+            $applicable = $flow->steps->sortBy('step_order')->values();
 
             // Never create a checklist that nobody can approve (or that is Done the moment it is submitted).
             if ($applicable->isEmpty()) {
@@ -70,16 +61,39 @@ final class SubmissionWorkflow
 
             $submission->steps()->delete();   // assignees cascade
 
+            // The evaluator is not part of the flow. They are a typed name plus a signature image,
+            // recorded as an already-done step with no user account behind it.
+            if ($evaluatorSignature) {
+                $type = ApprovalStepType::where('key', 'evaluate')->firstOrFail();
+
+                $row = $submission->steps()->create([
+                    'step_type_id' => $type->id,
+                    'label'        => $type->label,
+                    'status_label' => $type->status_label,
+                    'step_order'   => 0,
+                    'phase'        => 'pre_submit',
+                    'mode'         => 'any',
+                    'status'       => 'done',
+                    'completed_at' => now(),
+                ]);
+                $row->assignees()->create([
+                    'user_id'         => null,
+                    'decision'        => 'approved',
+                    'acted_at'        => now(),
+                    'signature_name'  => $evaluatorSignature['name'],
+                    'signature_image' => $evaluatorSignature['image'],
+                    'comment'         => 'Signed at submission, captured by user ' . auth()->id(),
+                ]);
+            }
+
             $approvalNo = 0;
             foreach ($applicable as $step) {
-                $isApproval  = $step->type->key === 'approve';
-                $label       = $isApproval ? 'Approval ' . (++$approvalNo) : $step->type->label;
-                $statusLabel = $isApproval ? 'For Approval' : $step->type->status_label;
+                $isApproval = $step->type->key === 'approve';
 
                 $row = $submission->steps()->create([
                     'step_type_id' => $step->step_type_id,
-                    'label'        => $label,
-                    'status_label' => $statusLabel,
+                    'label'        => $isApproval ? 'Approval ' . (++$approvalNo) : $step->type->label,
+                    'status_label' => $isApproval ? 'For Approval' : $step->type->status_label,
                     'step_order'   => $step->step_order,
                     'phase'        => 'post_submit',
                     'mode'         => $step->mode,

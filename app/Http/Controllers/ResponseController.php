@@ -34,7 +34,9 @@ class ResponseController extends Controller
             'image'          => ['sometimes', 'array'],
             'image.*'        => ['array', 'max:5'],      // max images per response
             'image.*.*'      => ['file', 'mimes:jpg,jpeg,png,webp', 'max:5120'], // KB, tune this
-            'requires_evaluator' => ['nullable', 'boolean']
+            'requires_evaluator' => ['nullable', 'boolean'],
+            'evaluator_name'      => ['nullable', 'string', 'max:150', 'required_with:evaluator_signature'],
+            'evaluator_signature' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120', 'required_with:evaluator_name'],
         ]);
 
         $response = $this->responseService->storeResponse($data);

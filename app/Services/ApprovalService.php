@@ -48,43 +48,39 @@ class ApprovalService
         $month = (int) ($request->month ?? Carbon::now()->month);
         $year  = (int) ($request->year ?? Carbon::now()->year);
 
+        $requested = strtolower((string) $request->input('section'));
+
+        if ($requested !== '' && ! in_array($requested, ['cobs', 'pests', 'birds'], true)) {
+            return collect();   // unknown section
+        }
+
         $batchNos = $this->batchNosFor(auth()->id(), $isPending);
 
-        if ($batchNos->isEmpty()) {
-            return collect();
-        }
-
-        // Same joins as before, in case useFilters() filters on checklist or section columns.
-        $responses = Response::query()
-            ->join('checklists', 'responses.checklist_id', '=', 'checklists.id')
-            ->join('sections', 'checklists.section_id', '=', 'sections.id')
-            ->whereIn('responses.batch_no', $batchNos)
-            ->with(['section', 'images'])
-            ->select('responses.*')
-            ->useFilters()
-            ->distinct()
-            ->get();
-
-        if ($responses->isEmpty()) {
-            return collect();
-        }
-
-        // Use the section the caller asked for. Only fall back to the first batch when none was given.
-        $requested = strtolower((string) $request->input('section'));
+        $responses = $batchNos->isEmpty()
+            ? collect()
+            : Response::query()
+                ->join('checklists', 'responses.checklist_id', '=', 'checklists.id')
+                ->join('sections', 'checklists.section_id', '=', 'sections.id')
+                ->whereIn('responses.batch_no', $batchNos)
+                ->with(['section', 'images'])
+                ->select('responses.*')
+                ->useFilters()
+                ->distinct()
+                ->get();
 
         if ($requested !== '') {
             $responses = $responses
                 ->filter(fn ($r) => strtolower((string) $r->section?->name) === $requested)
                 ->values();
-
-            if ($responses->isEmpty()) {
-                return collect();
-            }
         }
 
         $sectionName = $requested !== ''
             ? $requested
-            : strtolower((string) $responses->first()->section?->name);
+            : strtolower((string) $responses->first()?->section?->name);
+
+        if ($sectionName === '') {
+            return collect();   // nothing to show and no section asked for
+        }
 
         return match ($sectionName) {
             'pests', 'birds' => $this->responseService->formatPestAndBirdsResponses($responses, $sectionName, $month, $year),

@@ -70,7 +70,7 @@ class ApprovalFlowSync
             foreach ($desired as $stepOrder => [$typeKey, $userIds, $mode, $optional]) {
                 DB::table('approval_flow_steps')->updateOrInsert(
                     ['approval_flow_id' => $flowId, 'step_order' => $stepOrder],
-                    ['step_type_id' => $types[$typeKey], 'phase' => 'post_submit', 'mode' => $mode, 'is_optional' => $optional]
+                    ['step_type_id' => $types[$typeKey], 'phase' => 'post_submit', 'mode' => $mode]
                 );
                 $stepId = DB::table('approval_flow_steps')
                     ->where('approval_flow_id', $flowId)->where('step_order', $stepOrder)->value('id');

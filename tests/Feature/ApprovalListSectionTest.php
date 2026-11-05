@@ -94,7 +94,7 @@ class ApprovalListSectionTest extends TestCase
         ]);
         $stepId = DB::table('approval_flow_steps')->insertGetId([
             'approval_flow_id' => $flowId, 'step_type_id' => ApprovalStepType::where('key', 'approve')->value('id'),
-            'step_order' => 1, 'phase' => 'post_submit', 'mode' => 'any', 'is_optional' => false,
+            'step_order' => 1, 'phase' => 'post_submit', 'mode' => 'any',
         ]);
         DB::table('approval_flow_step_assignees')->insert(['approval_flow_step_id' => $stepId, 'user_id' => $this->approver->id]);
     }
@@ -114,8 +114,8 @@ class ApprovalListSectionTest extends TestCase
     {
         $this->actingAs($this->auditor);
         $workflow = app(SubmissionWorkflow::class);
-        $workflow->finalize($this->cobsBatch, false);
-        $workflow->finalize($this->pestsBatch, false);
+        $workflow->finalize($this->cobsBatch);
+        $workflow->finalize($this->pestsBatch);
     }
 
     private function signBoth(): void

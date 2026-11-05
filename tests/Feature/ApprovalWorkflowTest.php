@@ -8,6 +8,7 @@ use App\Models\Submission;
 use App\Models\User;
 use App\Services\ApprovalFlowSync;
 use App\Services\ApprovalService;
+use App\Services\ResponseService;
 use App\Services\SubmissionWorkflow;
 use Database\Seeders\ApprovalStepTypeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,9 +21,11 @@ use Tests\TestCase;
 
 /**
  * Flow under test (section "cobs"):
- *   order 0  Evaluation   (optional, only when requires_evaluator = true)  -> $evaluator
- *   order 1  Approval 1                                                    -> $approver1
- *   order 2  Approval 2                                                    -> $approver2
+ *   order 1  Approval 1  -> $approver1
+ *   order 2  Approval 2  -> $approver2
+ *
+ * The evaluator is NOT part of the flow. At submit the auditor may attach a typed name and a
+ * signature image; that is recorded as an already-done "Evaluation" step (order 0, no user).
  */
 class ApprovalWorkflowTest extends TestCase
 {
@@ -37,7 +40,6 @@ class ApprovalWorkflowTest extends TestCase
     private int $batchNo = 100;
 
     private User $auditor;
-    private User $evaluator;
     private User $approver1;
     private User $approver2;
 
@@ -50,19 +52,17 @@ class ApprovalWorkflowTest extends TestCase
         $this->seed(ApprovalStepTypeSeeder::class);
 
         $now = now();
-        $this->sectionId = DB::table('sections')->insertGetId(['name' => 'cobs', 'created_at' => $now, 'updated_at' => $now]);
+        $this->sectionId   = DB::table('sections')->insertGetId(['name' => 'cobs', 'created_at' => $now, 'updated_at' => $now]);
         $this->checklistId = $this->makeChecklist($this->sectionId);
-        $this->unitId = DB::table('units')->insertGetId(['name' => 'Unit 1', 'created_at' => $now, 'updated_at' => $now]);
+        $this->unitId      = DB::table('units')->insertGetId(['name' => 'Unit 1', 'created_at' => $now, 'updated_at' => $now]);
 
         $this->auditor   = $this->makeUser('Auditor');
-        $this->evaluator = $this->makeUser('Evaluator');
         $this->approver1 = $this->makeUser('Approver1');
         $this->approver2 = $this->makeUser('Approver2');
 
         $this->flowId = $this->makeFlow($this->sectionId, [
-            [0, 'evaluate', true,  [$this->evaluator->id]],
-            [1, 'approve',  false, [$this->approver1->id]],
-            [2, 'approve',  false, [$this->approver2->id]],
+            [1, 'any', [$this->approver1->id]],
+            [2, 'any', [$this->approver2->id]],
         ]);
 
         $this->makeBatch($this->batchNo, $this->checklistId);
@@ -104,18 +104,24 @@ class ApprovalWorkflowTest extends TestCase
         ]);
     }
 
-    /** @param array<int, array{0:int,1:string,2:bool,3:array<int,int>}> $steps [order, type key, optional, user ids] */
-    private function makeFlow(int $sectionId, array $steps): int
+    private function newSection(string $name): int
     {
-        $types = ApprovalStepType::pluck('id', 'key');
+        return DB::table('sections')->insertGetId(['name' => $name, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    /** @param array<int, array{0:int,1:string,2:array<int,int>}> $levels [order, mode, user ids] */
+    private function makeFlow(int $sectionId, array $levels): int
+    {
+        $typeId = ApprovalStepType::where('key', 'approve')->value('id');
+
         $flowId = DB::table('approval_flows')->insertGetId([
             'section_id' => $sectionId, 'name' => 'test', 'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        foreach ($steps as [$order, $key, $optional, $userIds]) {
+        foreach ($levels as [$order, $mode, $userIds]) {
             $stepId = DB::table('approval_flow_steps')->insertGetId([
-                'approval_flow_id' => $flowId, 'step_type_id' => $types[$key],
-                'step_order' => $order, 'phase' => 'post_submit', 'mode' => 'any', 'is_optional' => $optional,
+                'approval_flow_id' => $flowId, 'step_type_id' => $typeId,
+                'step_order' => $order, 'phase' => 'post_submit', 'mode' => $mode,
             ]);
             foreach ($userIds as $userId) {
                 DB::table('approval_flow_step_assignees')->insert(['approval_flow_step_id' => $stepId, 'user_id' => $userId]);
@@ -125,20 +131,34 @@ class ApprovalWorkflowTest extends TestCase
         return $flowId;
     }
 
-    private function makeBatch(int $batchNo, int $checklistId): void
+    private function makeFlowStep(int $order, int $userId): void
+    {
+        $stepId = DB::table('approval_flow_steps')->insertGetId([
+            'approval_flow_id' => $this->flowId, 'step_type_id' => ApprovalStepType::where('key', 'approve')->value('id'),
+            'step_order' => $order, 'phase' => 'post_submit', 'mode' => 'any',
+        ]);
+        DB::table('approval_flow_step_assignees')->insert(['approval_flow_step_id' => $stepId, 'user_id' => $userId]);
+    }
+
+    private function makeBatch(int $batchNo, int $checklistId, ?int $unitId = null): void
     {
         DB::table('responses')->insert([
-            'batch_no' => $batchNo, 'checklist_id' => $checklistId, 'unit_id' => $this->unitId,
+            'batch_no' => $batchNo, 'checklist_id' => $checklistId, 'unit_id' => $unitId ?? $this->unitId,
             'user_id' => $this->auditor->id, 'response' => '{}', 'is_completed' => true,
             'start_at' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
     }
 
-    private function submit(bool $requiresEvaluator = false): Submission
+    /** $withEvaluator = the auditor attaches a typed evaluator name and signature at submit. */
+    private function submit(bool $withEvaluator = false): Submission
     {
         $this->actingAs($this->auditor);
 
-        return $this->workflow->finalize($this->batchNo, $requiresEvaluator);
+        $signature = $withEvaluator
+            ? ['name' => 'Juan Dela Cruz', 'image' => 'https://example.test/e.png']
+            : null;
+
+        return $this->workflow->finalize($this->batchNo, $signature);
     }
 
     private function sign(User $user): void
@@ -168,23 +188,25 @@ class ApprovalWorkflowTest extends TestCase
         return app(ApprovalService::class);
     }
 
-    // ------------------------------------------------------- finalize: evaluator
+    // ------------------------------------------------------- finalize
 
-    public function test_finalize_with_evaluator_creates_three_steps_in_order(): void
-    {
-        $steps = $this->submit(true)->load('steps')->steps;
-
-        $this->assertSame([0, 1, 2], $steps->pluck('step_order')->all());
-        $this->assertSame(['Evaluation', 'Approval 1', 'Approval 2'], $steps->pluck('label')->all());
-        $this->assertSame(['pending'], $steps->pluck('status')->unique()->values()->all());
-    }
-
-    public function test_finalize_without_evaluator_skips_that_step(): void
+    public function test_finalize_without_an_evaluator_starts_at_approval_one(): void
     {
         $steps = $this->submit(false)->load('steps')->steps;
 
         $this->assertSame([1, 2], $steps->pluck('step_order')->all());
         $this->assertSame(['Approval 1', 'Approval 2'], $steps->pluck('label')->all());
+        $this->assertSame(['pending'], $steps->pluck('status')->unique()->values()->all());
+    }
+
+    public function test_finalize_with_a_signed_evaluator_adds_a_done_step_first(): void
+    {
+        $steps = $this->submit(true)->load('steps')->steps;
+
+        $this->assertSame([0, 1, 2], $steps->pluck('step_order')->all());
+        $this->assertSame(['Evaluation', 'Approval 1', 'Approval 2'], $steps->pluck('label')->all());
+        $this->assertSame(['done', 'pending', 'pending'], $steps->pluck('status')->all());
+        $this->assertSame('pre_submit', $steps->first()->phase);
     }
 
     public function test_every_approval_step_shows_the_for_approval_status(): void
@@ -194,15 +216,12 @@ class ApprovalWorkflowTest extends TestCase
         $this->assertSame('For Approval', $this->current()->status());
     }
 
-    public function test_requiring_an_evaluator_that_is_not_configured_is_rejected(): void
+    public function test_a_signed_evaluator_does_not_change_the_pending_status(): void
     {
-        DB::table('approval_flow_steps')->where('approval_flow_id', $this->flowId)->where('is_optional', true)->delete();
-
-        $this->expectException(ValidationException::class);
         $this->submit(true);
-    }
 
-    // ------------------------------------------------------- finalize: guards
+        $this->assertSame('For Approval', $this->current()->status());
+    }
 
     public function test_a_section_with_no_approvers_is_rejected(): void
     {
@@ -231,7 +250,7 @@ class ApprovalWorkflowTest extends TestCase
 
     public function test_two_flows_for_one_section_are_rejected(): void
     {
-        $this->makeFlow($this->sectionId, [[1, 'approve', false, [$this->approver1->id]]]);
+        $this->makeFlow($this->sectionId, [[1, 'any', [$this->approver1->id]]]);
 
         $this->expectException(ValidationException::class);
         $this->submit(false);
@@ -242,12 +261,11 @@ class ApprovalWorkflowTest extends TestCase
         $this->submit(false);
         $this->submit(true);
 
-        $steps = $this->current()->steps;
-        $this->assertCount(3, $steps);
+        $this->assertCount(3, $this->current()->steps);
         $this->assertSame(1, Submission::where('legacy_batch_no', $this->batchNo)->count());
     }
 
-    public function test_resubmitting_once_review_has_started_is_refused(): void
+    public function test_resubmitting_once_an_approver_has_signed_is_refused(): void
     {
         $this->submit(false);
         $this->sign($this->approver1);
@@ -255,25 +273,58 @@ class ApprovalWorkflowTest extends TestCase
         $this->assertSame(422, $this->statusCode(fn () => $this->submit(false)));
     }
 
+    public function test_resubmitting_after_a_signed_evaluator_and_an_approver_is_refused(): void
+    {
+        $this->submit(true);
+        $this->sign($this->approver1);
+
+        $this->assertSame(422, $this->statusCode(fn () => $this->submit(true)));
+    }
+
+    // ------------------------------------------------------- the free-text evaluator
+
+    public function test_a_free_text_evaluator_is_stored_by_name_with_no_user(): void
+    {
+        $this->submit(true);
+
+        $row = DB::table('submission_step_assignees as a')
+            ->join('submission_steps as s', 's.id', '=', 'a.submission_step_id')
+            ->where('s.step_order', 0)
+            ->first();
+
+        $this->assertNull($row->user_id);
+        $this->assertSame('Juan Dela Cruz', $row->signature_name);
+        $this->assertSame('https://example.test/e.png', $row->signature_image);
+        $this->assertSame('approved', $row->decision);
+        $this->assertStringContainsString('captured by user ' . $this->auditor->id, $row->comment);
+    }
+
+    public function test_nobody_can_sign_the_evaluator_step_but_approval_one_is_open(): void
+    {
+        $this->submit(true);
+
+        $this->assertSame(403, $this->statusCode(fn () => $this->sign($this->auditor)));
+        $this->assertSame(403, $this->statusCode(fn () => $this->sign($this->approver2)));   // Approval 1 first
+
+        $this->sign($this->approver1);
+        $this->assertSame('For Approval', $this->current()->status());
+    }
+
+    public function test_the_summary_shows_the_typed_evaluator_name(): void
+    {
+        $this->submit(true);
+
+        $summary = app(ResponseService::class)->generateSummaryReportByBatchNo($this->batchNo);
+
+        $this->assertSame('Juan Dela Cruz', $summary['evaluator']);
+        $this->assertNull($summary['evaluator_id']);
+        $this->assertSame('Juan Dela Cruz', $summary['signatory_1']['name']);
+        $this->assertSame('For Approval', $summary['status']);
+    }
+
     // ------------------------------------------------------- acting
 
-    public function test_walks_the_whole_chain_with_the_evaluator(): void
-    {
-        $this->submit(true);
-
-        $this->assertSame('For Acknowledgement', $this->current()->status());
-
-        $this->sign($this->evaluator);
-        $this->assertSame('For Approval', $this->current()->status());
-
-        $this->sign($this->approver1);
-        $this->assertSame('For Approval', $this->current()->status());
-
-        $this->sign($this->approver2);
-        $this->assertSame('Done', $this->current()->status());
-    }
-
-    public function test_walks_the_whole_chain_without_the_evaluator(): void
+    public function test_walks_the_whole_chain_without_an_evaluator(): void
     {
         $this->submit(false);
 
@@ -284,19 +335,14 @@ class ApprovalWorkflowTest extends TestCase
         $this->assertSame('Done', $this->current()->status());
     }
 
-    public function test_the_evaluator_cannot_act_when_the_step_was_not_required(): void
-    {
-        $this->submit(false);
-
-        $this->assertSame(403, $this->statusCode(fn () => $this->sign($this->evaluator)));
-    }
-
-    public function test_a_user_whose_turn_has_not_come_is_blocked(): void
+    public function test_walks_the_whole_chain_with_a_signed_evaluator(): void
     {
         $this->submit(true);
 
-        $this->assertSame(403, $this->statusCode(fn () => $this->sign($this->approver1)));   // evaluator first
-        $this->assertSame(403, $this->statusCode(fn () => $this->sign($this->approver2)));
+        $this->sign($this->approver1);
+        $this->sign($this->approver2);
+
+        $this->assertSame('Done', $this->current()->status());
     }
 
     public function test_approval_two_cannot_sign_before_approval_one(): void
@@ -373,7 +419,7 @@ class ApprovalWorkflowTest extends TestCase
         $this->assertSame(403, $this->statusCode(fn () => $this->workflow->assertCanAct($this->batchNo)));
     }
 
-    // ------------------------------------------------------- modes and parallel
+    // ------------------------------------------------------- modes and numbering
 
     public function test_any_mode_completes_when_one_assignee_signs(): void
     {
@@ -385,8 +431,7 @@ class ApprovalWorkflowTest extends TestCase
         $this->sign($second);   // either approver is enough
 
         $this->assertSame('done', $this->current()->steps->firstWhere('step_order', 1)->status);
-        // the other assignee of that step has nothing left to do, and Approval 2 is now open
-        $this->assertSame(403, $this->statusCode(fn () => $this->sign($this->approver1)));
+        $this->assertSame(403, $this->statusCode(fn () => $this->sign($this->approver1)));   // nothing left for them
         $this->assertEquals([$this->batchNo], $this->lists()->batchNosFor($this->approver2->id, true)->all());
     }
 
@@ -428,17 +473,6 @@ class ApprovalWorkflowTest extends TestCase
         $this->assertSame('Done', $this->current()->status());
     }
 
-    private function makeFlowStep(int $order, int $userId): void
-    {
-        $stepId = DB::table('approval_flow_steps')->insertGetId([
-            'approval_flow_id' => $this->flowId, 'step_type_id' => ApprovalStepType::where('key', 'approve')->value('id'),
-            'step_order' => $order, 'phase' => 'post_submit', 'mode' => 'any', 'is_optional' => false,
-        ]);
-        DB::table('approval_flow_step_assignees')->insert(['approval_flow_step_id' => $stepId, 'user_id' => $userId]);
-    }
-
-    // ------------------------------------------------------- snapshot
-
     public function test_editing_the_flow_does_not_change_a_submission_in_review(): void
     {
         $this->submit(false);
@@ -458,47 +492,43 @@ class ApprovalWorkflowTest extends TestCase
     {
         $this->submit(true);
 
-        $this->assertEquals([$this->batchNo], $this->lists()->batchNosFor($this->evaluator->id, true)->all());
-        $this->assertEquals([], $this->lists()->batchNosFor($this->approver1->id, true)->all());
-        $this->assertEquals([], $this->lists()->batchNosFor($this->approver2->id, true)->all());
-
-        $this->sign($this->evaluator);
-
-        $this->assertEquals([], $this->lists()->batchNosFor($this->evaluator->id, true)->all());
         $this->assertEquals([$this->batchNo], $this->lists()->batchNosFor($this->approver1->id, true)->all());
         $this->assertEquals([], $this->lists()->batchNosFor($this->approver2->id, true)->all());
+
+        $this->sign($this->approver1);
+
+        $this->assertEquals([], $this->lists()->batchNosFor($this->approver1->id, true)->all());
+        $this->assertEquals([$this->batchNo], $this->lists()->batchNosFor($this->approver2->id, true)->all());
     }
 
     public function test_history_is_permanent(): void
     {
         $this->submit(true);
 
-        $this->sign($this->evaluator);
-        $this->assertEquals([$this->batchNo], $this->lists()->batchNosFor($this->evaluator->id, false)->all());
+        $this->assertEquals([], $this->lists()->batchNosFor($this->approver1->id, false)->all());
 
         $this->sign($this->approver1);
         $this->sign($this->approver2);
 
-        foreach ([$this->evaluator, $this->approver1, $this->approver2] as $user) {
+        foreach ([$this->approver1, $this->approver2] as $user) {
             $this->assertEquals([$this->batchNo], $this->lists()->batchNosFor($user->id, false)->all());
         }
     }
 
-    public function test_the_auditor_has_no_pending_or_history_entries(): void
+    public function test_the_free_text_evaluator_never_appears_in_any_list(): void
     {
-        $this->submit(false);
+        $this->submit(true);
         $this->sign($this->approver1);
 
         $this->assertEquals([], $this->lists()->batchNosFor($this->auditor->id, true)->all());
         $this->assertEquals([], $this->lists()->batchNosFor($this->auditor->id, false)->all());
     }
 
-    public function test_a_draft_never_appears_in_any_list(): void
+    public function test_a_draft_cannot_be_signed(): void
     {
         $submission = $this->submit(false);
         $submission->update(['submitted_at' => null]);
 
-        // Lists are built from steps, so check that a draft cannot be signed either way.
         $this->assertSame(422, $this->statusCode(fn () => $this->sign($this->approver1)));
     }
 
@@ -522,19 +552,18 @@ class ApprovalWorkflowTest extends TestCase
 
     // ------------------------------------------------------- settings -> flow sync
 
-    private function makeSetting(int $sectionId, array $hierarchy, array $evaluators = []): AcknowledgementSetting
+    private function makeSetting(int $sectionId, array $hierarchy): AcknowledgementSetting
     {
         $id = DB::table('acknowledgement_settings')->insertGetId([
             'name' => 'Setting', 'section_id' => $sectionId,
             'hierarchy' => json_encode($hierarchy),
-            'evaluator_ids' => $evaluators ? json_encode($evaluators) : null,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
         return AcknowledgementSetting::findOrFail($id);
     }
 
-    /** @return array<int, array{0:int,1:string,2:int,3:bool}> [order, type, user, optional] */
+    /** @return array<int, array{0:int,1:string,2:int}> [order, type, user] */
     private function flowRows(int $sectionId): array
     {
         return DB::table('approval_flows as f')
@@ -542,41 +571,40 @@ class ApprovalWorkflowTest extends TestCase
             ->join('approval_step_types as t', 't.id', '=', 's.step_type_id')
             ->join('approval_flow_step_assignees as a', 'a.approval_flow_step_id', '=', 's.id')
             ->where('f.section_id', $sectionId)->whereNull('f.deleted_at')
-            ->orderBy('s.step_order')
-            ->get(['s.step_order', 't.key', 'a.user_id', 's.is_optional'])
-            ->map(fn ($r) => [(int) $r->step_order, $r->key, (int) $r->user_id, (bool) $r->is_optional])
+            ->orderBy('s.step_order')->orderBy('a.user_id')
+            ->get(['s.step_order', 't.key', 'a.user_id'])
+            ->map(fn ($r) => [(int) $r->step_order, $r->key, (int) $r->user_id])
             ->all();
     }
 
-    private function newSection(string $name): int
-    {
-        return DB::table('sections')->insertGetId(['name' => $name, 'created_at' => now(), 'updated_at' => now()]);
-    }
-
-    public function test_sync_builds_numbered_approvals_and_an_optional_evaluator(): void
+    public function test_sync_builds_numbered_approvals_only(): void
     {
         $section = $this->newSection('birds');
-        [$u1, $u2, $u3, $ev] = [$this->makeUser('U1'), $this->makeUser('U2'), $this->makeUser('U3'), $this->makeUser('Ev')];
+        [$u1, $u2, $u3] = [$this->makeUser('U1'), $this->makeUser('U2'), $this->makeUser('U3')];
 
-        $setting = $this->makeSetting($section, [$u1->id, $u2->id, $u3->id], [$ev->id]);
-        app(ApprovalFlowSync::class)->sync($setting);
+        app(ApprovalFlowSync::class)->sync($this->makeSetting($section, [$u1->id, $u2->id, $u3->id]));
 
         $this->assertSame([
-            [0, 'evaluate', $ev->id, true],
-            [1, 'approve', $u1->id, false],
-            [2, 'approve', $u2->id, false],
-            [3, 'approve', $u3->id, false],
+            [1, 'approve', $u1->id], [2, 'approve', $u2->id], [3, 'approve', $u3->id],
         ], $this->flowRows($section));
     }
 
-    public function test_sync_without_evaluators_has_no_evaluate_step(): void
+    public function test_sync_turns_a_nested_list_into_one_level_everyone_must_sign(): void
     {
         $section = $this->newSection('birds');
-        [$u1, $u2] = [$this->makeUser('U1'), $this->makeUser('U2')];
+        [$u1, $u2, $u3] = [$this->makeUser('U1'), $this->makeUser('U2'), $this->makeUser('U3')];
 
-        app(ApprovalFlowSync::class)->sync($this->makeSetting($section, [$u1->id, $u2->id]));
+        app(ApprovalFlowSync::class)->sync($this->makeSetting($section, [$u1->id, [$u2->id, $u3->id]]));
 
-        $this->assertSame([[1, 'approve', $u1->id, false], [2, 'approve', $u2->id, false]], $this->flowRows($section));
+        $this->assertSame([
+            [1, 'approve', $u1->id], [2, 'approve', $u2->id], [2, 'approve', $u3->id],
+        ], $this->flowRows($section));
+
+        $this->assertSame(
+            ['any', 'all'],
+            DB::table('approval_flows as f')->join('approval_flow_steps as s', 's.approval_flow_id', '=', 'f.id')
+                ->where('f.section_id', $section)->orderBy('s.step_order')->pluck('s.mode')->all()
+        );
     }
 
     public function test_sync_applies_reordering_adding_and_removing(): void
@@ -592,7 +620,7 @@ class ApprovalWorkflowTest extends TestCase
         DB::table('acknowledgement_settings')->where('id', $setting->id)->update(['hierarchy' => json_encode([$u3->id, $u1->id])]);
         $sync->sync($setting->fresh());
 
-        $this->assertSame([[1, 'approve', $u3->id, false], [2, 'approve', $u1->id, false]], $this->flowRows($section));
+        $this->assertSame([[1, 'approve', $u3->id], [2, 'approve', $u1->id]], $this->flowRows($section));
 
         // add one back at the end
         DB::table('acknowledgement_settings')->where('id', $setting->id)->update(['hierarchy' => json_encode([$u3->id, $u1->id, $u2->id])]);
@@ -612,7 +640,7 @@ class ApprovalWorkflowTest extends TestCase
 
         $this->actingAs($this->auditor);
         $this->expectException(ValidationException::class);
-        $this->workflow->finalize(200, false);
+        $this->workflow->finalize(200);
     }
 
     public function test_deleting_a_setting_retires_its_flow(): void
@@ -641,7 +669,7 @@ class ApprovalWorkflowTest extends TestCase
         $sync->sync($setting);
 
         $this->actingAs($this->auditor);
-        $this->workflow->finalize(300, false);
+        $this->workflow->finalize(300);
 
         DB::table('acknowledgement_settings')->where('id', $setting->id)->update(['hierarchy' => json_encode([$u2->id])]);
         $sync->sync($setting->fresh());
