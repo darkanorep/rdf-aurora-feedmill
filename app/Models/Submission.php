@@ -30,7 +30,15 @@ class Submission extends Model
         if ($this->isDraft()) {
             return 'Draft';
         }
+        if ($this->returned_at) {
+            return 'Rejected';
+        }
 
         return $this->steps->where('status', 'pending')->sortBy('step_order')->first()?->status_label ?? 'Done';
+    }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(SubmissionEvent::class)->orderBy('id');
     }
 }

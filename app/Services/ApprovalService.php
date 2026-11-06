@@ -121,6 +121,11 @@ class ApprovalService
         // Authorize BEFORE touching ImageKit, so a user with no turn can't upload anything.
         $this->workflow->assertCanAct($batchNo);
 
+        if (($data['action'] ?? 'approve') === 'reject') {
+            $this->workflow->reject($batchNo, trim((string) $data['comment']));
+            return;
+        }
+
         $sig = $this->extractSignature($data);
         $uploaded = null;
 
@@ -132,10 +137,10 @@ class ApprovalService
             $this->workflow->act($batchNo, [
                 'name'  => $sig['name'],
                 'image' => $uploaded['url'] ?? null,
-            ]);
+            ], $data['comment'] ?? null);
         } catch (\Throwable $e) {
             if ($uploaded) {
-                $this->responseService->discardSignature($uploaded);   // don't orphan the file
+                $this->responseService->discardSignature($uploaded);
             }
             throw $e;
         }

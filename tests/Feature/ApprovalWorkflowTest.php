@@ -318,8 +318,14 @@ class ApprovalWorkflowTest extends TestCase
 
         $this->assertSame('Juan Dela Cruz', $summary['evaluator']);
         $this->assertNull($summary['evaluator_id']);
-        $this->assertSame('Juan Dela Cruz', $summary['signatory_1']['name']);
         $this->assertSame('For Approval', $summary['status']);
+
+        $evaluation = $summary['steps'][0];
+        $this->assertSame('Evaluation', $evaluation['label']);
+        $this->assertSame('done', $evaluation['status']);
+        $this->assertSame('Juan Dela Cruz', $evaluation['assignees'][0]['name']);
+        $this->assertNull($evaluation['assignees'][0]['user_id']);
+        $this->assertSame('https://example.test/e.png', $evaluation['assignees'][0]['signature_image']);
     }
 
     // ------------------------------------------------------- acting
@@ -679,5 +685,95 @@ class ApprovalWorkflowTest extends TestCase
         $this->actingAs($u1);
         $this->workflow->act(300);                                                       // u1 still is
         $this->assertTrue(true);
+    }
+
+    private function reject(User $user, string $reason = 'Please fix'): void
+    {
+        $this->actingAs($user);
+        $this->workflow->reject($this->batchNo, $reason);
+    }
+
+    public function test_rejecting_returns_the_checklist_and_freezes_the_chain(): void
+    {
+        $this->submit(false);
+        $this->reject($this->approver1);
+
+        $current = $this->current();
+        $this->assertSame('Rejected', $current->status());
+        $this->assertNotNull($current->returned_at);
+        $this->assertSame(['rejected', 'pending'], $current->steps->pluck('status')->all());
+
+        $this->assertSame(403, $this->statusCode(fn () => $this->sign($this->approver1)));
+        $this->assertSame(403, $this->statusCode(fn () => $this->sign($this->approver2)));
+    }
+
+    public function test_a_rejected_checklist_leaves_every_pending_list_but_stays_in_history(): void
+    {
+        $this->submit(false);
+        $this->reject($this->approver1);
+
+        $this->assertEquals([], $this->lists()->batchNosFor($this->approver1->id, true)->all());
+        $this->assertEquals([], $this->lists()->batchNosFor($this->approver2->id, true)->all());
+        $this->assertEquals([$this->batchNo], $this->lists()->batchNosFor($this->approver1->id, false)->all());
+    }
+
+    public function test_only_the_person_whose_turn_it_is_can_reject(): void
+    {
+        $this->submit(false);
+
+        $this->assertSame(403, $this->statusCode(fn () => $this->reject($this->approver2)));
+        $this->assertSame(403, $this->statusCode(fn () => $this->reject($this->auditor)));
+    }
+
+    public function test_a_later_approver_can_reject_after_an_earlier_one_signed(): void
+    {
+        $this->submit(false);
+        $this->sign($this->approver1);
+        $this->reject($this->approver2, 'Score is wrong');
+
+        $this->assertSame('Rejected', $this->current()->status());
+        $this->assertEquals([$this->batchNo], $this->lists()->batchNosFor($this->approver1->id, false)->all());
+    }
+
+    public function test_the_rejection_reason_is_logged(): void
+    {
+        $this->submit(false);
+        $this->reject($this->approver1, 'Photo is blurred');
+
+        $event = DB::table('submission_events')->where('type', 'rejected')->first();
+        $this->assertSame('Photo is blurred', $event->comment);
+        $this->assertSame($this->approver1->getFullNameAttribute(), $event->actor_name);
+        $this->assertSame('Approval 1', $event->step_label);
+    }
+
+    public function test_resubmitting_a_rejected_checklist_restarts_the_chain(): void
+    {
+        $this->submit(false);
+        $this->sign($this->approver1);
+        $this->reject($this->approver2);
+
+        $this->submit(true);                              // allowed: it was rejected
+
+        $current = $this->current();
+        $this->assertNull($current->returned_at);
+        $this->assertSame('For Approval', $current->status());
+        $this->assertSame(['done', 'pending', 'pending'], $current->steps->pluck('status')->all());
+        $this->assertSame(['rejected', 'resubmitted'], DB::table('submission_events')->orderBy('id')->pluck('type')->all());
+
+        $this->sign($this->approver1);                    // everyone signs again, from the start
+        $this->sign($this->approver2);
+        $this->assertSame('Done', $this->current()->status());
+    }
+
+    public function test_the_summary_shows_the_rejection(): void
+    {
+        $this->submit(false);
+        $this->reject($this->approver1, 'Photo is blurred');
+
+        $summary = app(ResponseService::class)->generateSummaryReportByBatchNo($this->batchNo);
+
+        $this->assertSame('Rejected', $summary['status']);
+        $this->assertSame('Photo is blurred', $summary['rejection']['reason']);
+        $this->assertSame('Approval 1', $summary['rejection']['step']);
     }
 }

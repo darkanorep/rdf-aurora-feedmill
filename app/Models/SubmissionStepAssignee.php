@@ -24,12 +24,14 @@ class SubmissionStepAssignee extends Model
     public function scopeActionable(Builder $q): Builder
     {
         return $q->whereNull('submission_step_assignees.decision')->whereHas('step', function ($s) {
-            $s->where('status', 'pending')->whereNotExists(function ($e) {
-                $e->selectRaw(1)->from('submission_steps as earlier')
-                    ->whereColumn('earlier.submission_id', 'submission_steps.submission_id')
-                    ->whereColumn('earlier.step_order', '<', 'submission_steps.step_order')
-                    ->where('earlier.status', '!=', 'done');
-            });
+            $s->where('status', 'pending')
+                ->whereHas('submission', fn ($sub) => $sub->whereNull('returned_at'))
+                ->whereNotExists(function ($e) {
+                    $e->selectRaw(1)->from('submission_steps as earlier')
+                        ->whereColumn('earlier.submission_id', 'submission_steps.submission_id')
+                        ->whereColumn('earlier.step_order', '<', 'submission_steps.step_order')
+                        ->where('earlier.status', '!=', 'done');
+                });
         });
     }
 }

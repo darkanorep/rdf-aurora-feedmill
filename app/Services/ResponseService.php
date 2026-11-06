@@ -162,10 +162,15 @@ class ResponseService
         ];
     }
 
-    /** Same payload as before: response[n] + image[n][m]. */
+    /** Same payload as before: response[n] + image[n][m], plus the optional evaluator_name + evaluator_signature. */
     public function storeResponse(array $data): ?array
     {
-        $responses = $data['response'] ?? [];
+        $responses       = $data['response'] ?? [];
+        $existingBatchNo = ! empty($data['batch_no']) ? (int) $data['batch_no'] : null;
+
+        // Only the owner may replace a batch, and only before review or after a rejection.
+        // Checked first, so nothing is uploaded for a request that will be refused.
+        $this->assertCanReplace($existingBatchNo);
 
         // A signed evaluator only makes sense on a submitted checklist.
         if (! empty($data['evaluator_name']) && empty($data['is_completed'])) {
@@ -195,13 +200,15 @@ class ResponseService
             ? ['name' => trim($data['evaluator_name']), 'image' => $signature['url']]
             : null;
 
+        $stale = [];   // ImageKit files of the photos this save replaces
+
         try {
             // 2. All DB work is atomic.
-            $batchNo = DB::transaction(function () use ($data, $responses, $uploaded, $evaluatorSignature) {
-                $existingBatchNo = $data['batch_no'] ?? null;
-
+            $batchNo = DB::transaction(function () use ($data, $responses, $uploaded, $evaluatorSignature, $existingBatchNo, &$stale) {
                 if ($existingBatchNo) {
-                    $ids = $this->response->where('batch_no', $existingBatchNo)->pluck('id');
+                    $ids   = $this->response->where('batch_no', $existingBatchNo)->pluck('id');
+                    $stale = Image::whereIn('response_id', $ids)->whereNotNull('file_id')->pluck('file_id')->all();
+
                     Image::whereIn('response_id', $ids)->forceDelete();
                     $this->response->where('batch_no', $existingBatchNo)->forceDelete();
                 }
@@ -231,12 +238,16 @@ class ResponseService
                 return (int) $batchNo;
             });
         } catch (\Throwable $e) {
-            $this->discardUploads($uploaded);   // don't leave orphans in ImageKit
+            // Rolled back: the old photos still exist, so only the new uploads are removed.
+            $this->discardUploads($uploaded);
             if ($signature) {
                 $this->discardSignature($signature);
             }
             throw $e;
         }
+
+        // Committed: the replaced photos are no longer referenced, so remove them from ImageKit.
+        $this->deleteRemoteFiles($stale);
 
         return $this->generateSummaryReportByBatchNo($batchNo);
     }
@@ -299,6 +310,18 @@ class ResponseService
         }
     }
 
+    /** @param array<int, string> $fileIds */
+    private function deleteRemoteFiles(array $fileIds): void
+    {
+        foreach ($fileIds as $fileId) {
+            try {
+                $this->imageKit->deleteFile($fileId);
+            } catch (\Throwable $e) {
+                \Log::warning("Could not delete ImageKit file {$fileId}: " . $e->getMessage());
+            }
+        }
+    }
+
     private function parseData($value): array
     {
         if (is_string($value)) {
@@ -337,7 +360,7 @@ class ResponseService
         $scoreData = $this->computeHierarchicalScore($firstResponse, $batchResponses);
 
         // Approval progress comes only from the submission's steps.
-        $submission = Submission::with('steps.type', 'steps.assignees.user')
+        $submission = Submission::with('steps.type', 'steps.assignees.user', 'events')
             ->where('legacy_batch_no', $batchNo)->first();
         $submitted = $submission && ! $submission->isDraft();
         $steps = $submitted ? $submission->steps : collect();
@@ -362,12 +385,17 @@ class ResponseService
         $signatory3 = $signatoryOf('assess');
 
         $status = $submitted
-            ? $submission->status()
+            ? $submission->status()   // 'Rejected' while the checklist is back with the auditor
             : ($firstResponse?->is_completed ? 'Done' : 'Draft');
 
         $evaluator = $personOf('evaluate');
         $approver  = $personOf('approve');
         $assessor  = $personOf('assess');
+
+        // The latest rejection, shown to the auditor while the checklist is returned.
+        $rejection = $submission?->returned_at
+            ? $submission->events->where('type', 'rejected')->last()
+            : null;
 
         return [
             'batch_no' => (int) $batchNo,
@@ -410,6 +438,23 @@ class ResponseService
 //            'signatory_2' => $signatory2,
 //            'signatory_3' => $signatory3,
             'status'      => $status,
+            // Null unless the checklist is currently returned to the auditor.
+            'rejection' => $rejection ? [
+                'at'     => $rejection->created_at,
+                'by'     => $rejection->actor_name,
+                'step'   => $rejection->step_label,
+                'reason' => $rejection->comment,
+            ] : null,
+            // Permanent log: every rejection and resubmission of this checklist.
+            'events' => $submission
+                ? $submission->events->map(fn ($e) => [
+                    'type'   => $e->type,
+                    'by'     => $e->actor_name,
+                    'step'   => $e->step_label,
+                    'reason' => $e->comment,
+                    'at'     => $e->created_at,
+                ])->values()
+                : [],
             // Every step in order, so any number of approvers can be shown.
             'steps' => $steps->map(fn ($s) => [
                 'order'     => $s->step_order,
@@ -966,5 +1011,26 @@ class ResponseService
     public function discardSignature(array $uploaded): void
     {
         $this->discardUploads([[$uploaded]]);    // discardUploads expects a list of lists
+    }
+
+    private function assertCanReplace(?int $batchNo): void
+    {
+        if (! $batchNo) {
+            return;
+        }
+
+        $first = $this->response->where('batch_no', $batchNo)->orderBy('id')->first();
+        if (! $first) {
+            return;                                    // nothing to replace
+        }
+
+        abort_unless((int) $first->user_id === (int) auth()->id(), 403, 'Not your checklist.');
+
+        $submission = Submission::where('legacy_batch_no', $batchNo)->first();
+        abort_if(
+            $submission && ! $submission->isDraft() && ! $submission->returned_at,
+            422,
+            'This checklist is in review. It can only be edited after it is rejected.'
+        );
     }
 }

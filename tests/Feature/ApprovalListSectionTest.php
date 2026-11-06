@@ -185,13 +185,19 @@ class ApprovalListSectionTest extends TestCase
         $this->assertSame('[]', $this->listAs($this->approver, 'status=history&section=nothing'));
     }
 
-    public function test_a_section_with_no_batches_for_the_user_returns_an_empty_list(): void
+    public function test_a_section_with_no_batches_for_the_user_lists_no_batches(): void
     {
         $this->submitBoth();
 
-        // the auditor signs nothing, so there is nothing for them in any section
-        $this->assertSame('[]', $this->listAs($this->auditor, 'status=pending&section=pests'));
-        $this->assertSame('[]', $this->listAs($this->auditor, 'status=history&section=cobs'));
+        // the auditor signs nothing, so no batch may appear in any section.
+        // The section's layout is still returned, just with nothing in it.
+        foreach (['status=pending&section=pests', 'status=history&section=cobs'] as $query) {
+            $content = $this->listAs($this->auditor, $query);
+
+            $this->assertIsArray(json_decode($content, true));
+            $this->assertFalse($this->has($content, $this->cobsBatch));
+            $this->assertFalse($this->has($content, $this->pestsBatch));
+        }
     }
 
     public function test_without_a_section_the_list_still_loads(): void

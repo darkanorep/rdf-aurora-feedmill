@@ -22,11 +22,14 @@ class ApprovalController extends Controller
             'evaluate_image.*.*' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'approve_image.*.*'  => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'assess_image.*.*'   => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'action'  => ['nullable', 'in:approve,reject'],
+            'comment' => ['nullable', 'string', 'max:1000', 'required_if:action,reject'],
         ]);
+        $rejected = $request->input('action') === 'reject';
 
         $this->approvalService->approveResponses($request->all());
 
-        return response()->json(['message' => 'Approved successfully.'], 200);
+        return response()->json(['message' => $rejected ? 'Returned to the auditor.' : 'Approved successfully.'], 200);
     }
 
     public function countStatus()

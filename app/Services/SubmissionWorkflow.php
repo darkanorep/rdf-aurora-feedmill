@@ -9,6 +9,7 @@ use App\Models\SubmissionStepAssignee;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use App\Models\ApprovalStepType;
+use App\Models\SubmissionEvent;
 
 final class SubmissionWorkflow
 {
@@ -25,10 +26,13 @@ final class SubmissionWorkflow
             // Review has started once an approver has acted. An evaluator signed at submit doesn't count.
             $existing = Submission::where('legacy_batch_no', $batchNo)->lockForUpdate()->first();
             abort_if(
-                $existing && $existing->steps()->where('phase', 'post_submit')->where('status', '!=', 'pending')->exists(),
+                $existing && ! $existing->returned_at
+                && $existing->steps()->where('phase', 'post_submit')->where('status', '!=', 'pending')->exists(),
                 422,
                 'This checklist is already in review and cannot be resubmitted.'
             );
+
+            $wasReturned = (bool) $existing?->returned_at;
 
             $flow = $this->resolver->resolve($first->checklist);
             $applicable = $flow->steps->sortBy('step_order')->values();
@@ -57,6 +61,7 @@ final class SubmissionWorkflow
                 'remarks'          => $first->getRawOriginal('remarks'),
                 'notes'            => $first->getRawOriginal('notes'),
                 'temporal_audit'   => $first->getRawOriginal('temporal_audit'),
+                'returned_at' => null,
             ]);
 
             $submission->steps()->delete();   // assignees cascade
@@ -106,6 +111,15 @@ final class SubmissionWorkflow
 
             DB::table('responses')->where('batch_no', $batchNo)->update(['submission_id' => $submission->id]);
 
+            if ($wasReturned) {
+                SubmissionEvent::create([
+                    'submission_id' => $submission->id,
+                    'type'          => 'resubmitted',
+                    'user_id'       => auth()->id(),
+                    'actor_name'    => auth()->user()?->getFullNameAttribute(),
+                ]);
+            }
+
             return $submission;
         });
     }
@@ -153,6 +167,50 @@ final class SubmissionWorkflow
             ]);
 
             $step->refreshStatus();
+
+            return $submission->load('steps.type', 'steps.assignees');
+        });
+    }
+
+    /** The caller rejects THEIR OWN open step. The checklist goes back to the auditor. */
+    public function reject(int $batchNo, string $reason): Submission
+    {
+        return DB::transaction(function () use ($batchNo, $reason) {
+            $submission = Submission::where('legacy_batch_no', $batchNo)->lockForUpdate()->first();
+            abort_if(! $submission, 404, 'Batch not found.');
+            abort_if($submission->isDraft(), 422, 'This checklist has not been submitted yet.');
+
+            $row = SubmissionStepAssignee::actionable()
+                ->where('submission_step_assignees.user_id', auth()->id())
+                ->whereHas('step', fn ($q) => $q->where('submission_id', $submission->id))
+                ->lockForUpdate()
+                ->first();
+
+            abort_unless($row, 403, 'You have no pending action on this checklist.');
+
+            $step = SubmissionStep::lockForUpdate()->find($row->submission_step_id);
+            abort_unless($step, 500, 'Step not found for this assignee.');
+
+            $name = auth()->user()?->getFullNameAttribute();
+
+            $row->update([
+                'decision'       => 'rejected',
+                'acted_at'       => now(),
+                'signature_name' => $name,
+                'comment'        => $reason,
+            ]);
+            $step->refreshStatus();                       // becomes 'rejected'
+            $submission->update(['returned_at' => now()]);
+
+            SubmissionEvent::create([
+                'submission_id' => $submission->id,
+                'type'          => 'rejected',
+                'user_id'       => auth()->id(),
+                'actor_name'    => $name,
+                'step_order'    => $step->step_order,
+                'step_label'    => $step->label,
+                'comment'       => $reason,
+            ]);
 
             return $submission->load('steps.type', 'steps.assignees');
         });
