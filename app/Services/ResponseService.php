@@ -205,12 +205,26 @@ class ResponseService
         try {
             // 2. All DB work is atomic.
             $batchNo = DB::transaction(function () use ($data, $responses, $uploaded, $evaluatorSignature, $existingBatchNo, &$stale) {
-                if ($existingBatchNo) {
-                    $ids   = $this->response->where('batch_no', $existingBatchNo)->pluck('id');
-                    $stale = Image::whereIn('response_id', $ids)->whereNotNull('file_id')->pluck('file_id')->all();
+                $oldIds  = [];
+                $keepMap = [];   // image id => the answer index it moves to
 
-                    Image::whereIn('response_id', $ids)->forceDelete();
-                    $this->response->where('batch_no', $existingBatchNo)->forceDelete();
+                if ($existingBatchNo) {
+                    $oldIds = $this->response->where('batch_no', $existingBatchNo)->pluck('id')->all();
+
+                    // Only photos that really belong to this batch can be kept.
+                    $owned = Image::whereIn('response_id', $oldIds)->pluck('id')->all();
+                    foreach ((array) ($data['keep_image'] ?? []) as $key => $imageIds) {
+                        foreach ((array) $imageIds as $imageId) {
+                            if (in_array((int) $imageId, $owned, true)) {
+                                $keepMap[(int) $imageId] = $key;
+                            }
+                        }
+                    }
+
+                    // Files of the photos that are NOT kept are removed from ImageKit after the commit.
+                    $stale = Image::whereIn('response_id', $oldIds)
+                        ->whereNotIn('id', array_keys($keepMap))
+                        ->whereNotNull('file_id')->pluck('file_id')->all();
                 }
 
                 $batchNo  = $existingBatchNo ?: $this->generateBatchNo();
@@ -228,9 +242,20 @@ class ResponseService
                             'file_id'     => $file['file_id'],
                         ]);
                     }
+
+                    // Re-attach the kept photos to this answer.
+                    $mine = array_keys(array_filter($keepMap, fn ($k) => (string) $k === (string) $key));
+                    if ($mine) {
+                        Image::whereIn('id', $mine)->update(['response_id' => $response->id]);
+                    }
                 }
 
-                // The approval steps come from the section's approval flow.
+                // The old rows go only after the kept photos have moved, so nothing cascades away.
+                if ($oldIds) {
+                    Image::whereIn('response_id', $oldIds)->forceDelete();
+                    $this->response->whereIn('id', $oldIds)->forceDelete();
+                }
+
                 if (! empty($data['is_completed'])) {
                     app(SubmissionWorkflow::class)->finalize((int) $batchNo, $evaluatorSignature);
                 }
@@ -432,6 +457,7 @@ class ResponseService
                     'id' => $response->id,
                     'response' => $response->response,
                     'images' => $response->images->pluck('url'),
+                    'image_items' => $response->images->map(fn ($i) => ['id' => $i->id, 'url' => $i->url])->values(),
                 ];
             })->values(),
 //            'signatory_1' => $signatory1,

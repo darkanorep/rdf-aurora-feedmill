@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreAdditionalAttachmentRequest;
+use App\Models\Submission;
 use App\Services\ResponseService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 class ResponseController extends Controller
 {
@@ -37,6 +39,9 @@ class ResponseController extends Controller
             'requires_evaluator' => ['nullable', 'boolean'],
             'evaluator_name'      => ['nullable', 'string', 'max:150', 'required_with:evaluator_signature'],
             'evaluator_signature' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120', 'required_with:evaluator_name'],
+            'keep_image'     => ['sometimes', 'array'],
+            'keep_image.*'   => ['array'],
+            'keep_image.*.*' => ['integer'],
         ]);
 
         $response = $this->responseService->storeResponse($data);
@@ -88,6 +93,18 @@ class ResponseController extends Controller
             'response_id' => $request->input('response_id'),
         ]);
     }
+
+    public function returned()
+    {
+        return Submission::where('user_id', auth()->id())
+            ->whereNotNull('returned_at')
+            ->pluck('legacy_batch_no')
+            ->map(fn ($batchNo) => $this->responseService->generateSummaryReportByBatchNo($batchNo))
+            ->filter()
+            ->map(fn ($s) => Arr::only($s, ['batch_no', 'checklist_id', 'checklist_name', 'unit_id', 'unit', 'start_at', 'status', 'rejection']))
+            ->values();
+    }
+
     public function truncateResponse() {
         $this->responseService->truncateResponse();
 
