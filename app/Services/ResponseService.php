@@ -256,8 +256,14 @@ class ResponseService
                     $this->response->whereIn('id', $oldIds)->forceDelete();
                 }
 
+                // The approval steps come from the section's approval flow.
                 if (! empty($data['is_completed'])) {
-                    app(SubmissionWorkflow::class)->finalize((int) $batchNo, $evaluatorSignature);
+                    app(SubmissionWorkflow::class)->finalize(
+                        (int) $batchNo,
+                        $evaluatorSignature,
+                        // Editing an existing batch keeps its evaluator signature unless the editor removes it.
+                        $existingBatchNo !== null && ! filter_var($data['remove_evaluator'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                    );
                 }
 
                 return (int) $batchNo;
@@ -436,7 +442,8 @@ class ResponseService
             'user_signatory' => $firstResponse?->user?->signature,
             // Kept for the current frontend, now derived from the steps.
             'evaluator_id' => $evaluator?->user_id,   // null for a free-text evaluator
-            'evaluator'    => $evaluator?->signature_name ?? $evaluator?->user?->getFullNameAttribute(),
+            'evaluator'           => $evaluator?->signature_name ?? $evaluator?->user?->getFullNameAttribute(),
+            'evaluator_signature' => $evaluator?->signature_image,
 //            'approver_id' => $approver?->user_id,
 //            'approver' => $approver?->user?->getFullNameAttribute(),
 //            'assessor_id' => $assessor?->user_id,

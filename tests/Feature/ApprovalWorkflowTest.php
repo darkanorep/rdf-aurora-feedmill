@@ -776,4 +776,62 @@ class ApprovalWorkflowTest extends TestCase
         $this->assertSame('Photo is blurred', $summary['rejection']['reason']);
         $this->assertSame('Approval 1', $summary['rejection']['step']);
     }
+
+    public function test_resubmitting_keeps_the_evaluator_signature_when_none_is_sent(): void
+    {
+        $this->submit(true);
+        $original = DB::table('submission_step_assignees as a')
+            ->join('submission_steps as s', 's.id', '=', 'a.submission_step_id')
+            ->where('s.step_order', 0)->first();
+
+        $this->reject($this->approver1);
+
+        $this->actingAs($this->auditor);
+        $this->workflow->finalize($this->batchNo, null, true);     // the editor sent nothing about the evaluator
+
+        $steps = $this->current()->steps;
+        $this->assertSame(['done', 'pending', 'pending'], $steps->pluck('status')->all());
+
+        $kept = $steps->first()->assignees->first();
+        $this->assertSame('Juan Dela Cruz', $kept->signature_name);
+        $this->assertSame('https://example.test/e.png', $kept->signature_image);
+        $this->assertSame($original->acted_at, $kept->acted_at->format('Y-m-d H:i:s'));   // the original signing time
+        $this->assertStringContainsString('captured by user', $kept->comment);
+        $this->assertStringContainsString('carried over', $kept->comment);
+    }
+
+    public function test_a_new_evaluator_signature_replaces_the_old_one(): void
+    {
+        $this->submit(true);
+        $this->reject($this->approver1);
+
+        $this->actingAs($this->auditor);
+        $this->workflow->finalize($this->batchNo, ['name' => 'Maria Santos', 'image' => 'https://example.test/new.png'], true);
+
+        $kept = $this->current()->steps->first()->assignees->first();
+        $this->assertSame('Maria Santos', $kept->signature_name);
+        $this->assertSame('https://example.test/new.png', $kept->signature_image);
+    }
+
+    public function test_the_evaluator_can_be_removed_when_editing(): void
+    {
+        $this->submit(true);
+        $this->reject($this->approver1);
+
+        $this->actingAs($this->auditor);
+        $this->workflow->finalize($this->batchNo, null, false);    // remove_evaluator=1
+
+        $this->assertSame([1, 2], $this->current()->steps->pluck('step_order')->all());
+    }
+
+    public function test_nothing_is_carried_over_when_there_was_no_evaluator(): void
+    {
+        $this->submit(false);
+        $this->reject($this->approver1);
+
+        $this->actingAs($this->auditor);
+        $this->workflow->finalize($this->batchNo, null, true);
+
+        $this->assertSame([1, 2], $this->current()->steps->pluck('step_order')->all());
+    }
 }

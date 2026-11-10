@@ -16,14 +16,15 @@ final class SubmissionWorkflow
     public function __construct(private readonly ApprovalFlowResolver $resolver) {}
 
     /** Called when a batch is submitted: creates the submission and snapshots every step as pending. */
-    public function finalize(int $batchNo, ?array $evaluatorSignature = null): Submission
+    public function finalize(int $batchNo, ?array $evaluatorSignature = null, bool $keepEvaluator = false): Submission
     {
-        return DB::transaction(function () use ($batchNo, $evaluatorSignature) {
+        return DB::transaction(function () use ($batchNo, $evaluatorSignature, $keepEvaluator) {
             $first = Response::where('batch_no', $batchNo)->orderBy('id')->first();
             abort_if(! $first, 404, 'Batch not found.');
             abort_if(! $first->checklist, 422, 'This batch has no valid checklist.');
 
-            // Review has started once an approver has acted. An evaluator signed at submit doesn't count.
+            // Review has started once an approver has acted. A rejected checklist may be resubmitted,
+            // and an evaluator signed at submit doesn't count.
             $existing = Submission::where('legacy_batch_no', $batchNo)->lockForUpdate()->first();
             abort_if(
                 $existing && ! $existing->returned_at
@@ -31,8 +32,25 @@ final class SubmissionWorkflow
                 422,
                 'This checklist is already in review and cannot be resubmitted.'
             );
-
             $wasReturned = (bool) $existing?->returned_at;
+
+            // Editing: carry the previous evaluator signature over unless a new one was sent.
+            if ($evaluatorSignature === null && $keepEvaluator && $existing) {
+                $old = SubmissionStepAssignee::whereHas(
+                    'step',
+                    fn ($q) => $q->where('submission_id', $existing->id)->where('phase', 'pre_submit')
+                )->orderByDesc('id')->first();
+
+                if ($old && $old->signature_image) {
+                    $evaluatorSignature = [
+                        'name'     => $old->signature_name,
+                        'image'    => $old->signature_image,
+                        'acted_at' => $old->acted_at,
+                        'comment'  => trim(($old->comment ?? 'Signed at submission')
+                            . ' | carried over on resubmit by user ' . auth()->id()),
+                    ];
+                }
+            }
 
             $flow = $this->resolver->resolve($first->checklist);
             $applicable = $flow->steps->sortBy('step_order')->values();
@@ -57,19 +75,20 @@ final class SubmissionWorkflow
                 'user_id'          => $first->user_id,
                 'start_at'         => $first->start_at,
                 'submitted_at'     => now(),
+                'returned_at'      => null,
                 'good_points'      => $first->getRawOriginal('good_points'),
                 'remarks'          => $first->getRawOriginal('remarks'),
                 'notes'            => $first->getRawOriginal('notes'),
                 'temporal_audit'   => $first->getRawOriginal('temporal_audit'),
-                'returned_at' => null,
             ]);
 
             $submission->steps()->delete();   // assignees cascade
 
-            // The evaluator is not part of the flow. They are a typed name plus a signature image,
+            // The evaluator is not part of the flow: a typed name plus a signature image,
             // recorded as an already-done step with no user account behind it.
             if ($evaluatorSignature) {
                 $type = ApprovalStepType::where('key', 'evaluate')->firstOrFail();
+                $signedAt = $evaluatorSignature['acted_at'] ?? now();
 
                 $row = $submission->steps()->create([
                     'step_type_id' => $type->id,
@@ -79,15 +98,16 @@ final class SubmissionWorkflow
                     'phase'        => 'pre_submit',
                     'mode'         => 'any',
                     'status'       => 'done',
-                    'completed_at' => now(),
+                    'completed_at' => $signedAt,
                 ]);
                 $row->assignees()->create([
                     'user_id'         => null,
                     'decision'        => 'approved',
-                    'acted_at'        => now(),
+                    'acted_at'        => $signedAt,
                     'signature_name'  => $evaluatorSignature['name'],
                     'signature_image' => $evaluatorSignature['image'],
-                    'comment'         => 'Signed at submission, captured by user ' . auth()->id(),
+                    'comment'         => $evaluatorSignature['comment']
+                        ?? 'Signed at submission, captured by user ' . auth()->id(),
                 ]);
             }
 
