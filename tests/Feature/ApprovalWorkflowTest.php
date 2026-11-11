@@ -265,20 +265,44 @@ class ApprovalWorkflowTest extends TestCase
         $this->assertSame(1, Submission::where('legacy_batch_no', $this->batchNo)->count());
     }
 
-    public function test_resubmitting_once_an_approver_has_signed_is_refused(): void
+    public function test_editing_after_an_approver_signed_restarts_the_chain_and_logs_it(): void
     {
         $this->submit(false);
         $this->sign($this->approver1);
 
-        $this->assertSame(422, $this->statusCode(fn () => $this->submit(false)));
+        $this->submit(false);   // the auditor edits the submitted checklist
+
+        $this->assertSame(['pending', 'pending'], $this->current()->steps->pluck('status')->all());
+
+        $event = DB::table('submission_events')->where('type', 'edited')->first();
+        $this->assertNotNull($event);
+        $this->assertStringContainsString('Approval 1', $event->comment);   // who had signed is on record
+
+        $this->assertEquals([$this->batchNo], $this->lists()->batchNosFor($this->approver1->id, true)->all());
     }
 
-    public function test_resubmitting_after_a_signed_evaluator_and_an_approver_is_refused(): void
+    public function test_a_finished_checklist_can_be_edited_and_reopens(): void
+    {
+        $this->submit(false);
+        $this->sign($this->approver1);
+        $this->sign($this->approver2);
+        $this->assertSame('Done', $this->current()->status());
+
+        $this->submit(false);
+
+        $this->assertSame('For Approval', $this->current()->status());
+        $this->assertSame(['pending', 'pending'], $this->current()->steps->pluck('status')->all());
+    }
+
+    public function test_editing_keeps_a_signed_evaluator_but_voids_the_approvals(): void
     {
         $this->submit(true);
         $this->sign($this->approver1);
 
-        $this->assertSame(422, $this->statusCode(fn () => $this->submit(true)));
+        $this->actingAs($this->auditor);
+        $this->workflow->finalize($this->batchNo, null, true);
+
+        $this->assertSame(['done', 'pending', 'pending'], $this->current()->steps->pluck('status')->all());
     }
 
     // ------------------------------------------------------- the free-text evaluator
@@ -846,5 +870,57 @@ class ApprovalWorkflowTest extends TestCase
         $kept = $this->current()->steps->first()->assignees->first();
         $this->assertSame('Juan D. Cruz', $kept->signature_name);                       // renamed
         $this->assertSame('https://example.test/e.png', $kept->signature_image);        // image kept
+    }
+
+    public function test_status_count_shows_pending_per_approver_and_returned_for_the_auditor(): void
+    {
+        $this->submit(false);
+
+        $this->actingAs($this->approver1);
+        $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);
+        $this->assertSame(0, $this->lists()->statusCount()['returned']['TOTAL']);
+
+        $this->actingAs($this->approver2);                       // not their turn yet
+        $this->assertSame(0, $this->lists()->statusCount()['pending']['TOTAL']);
+
+        $this->reject($this->approver1, 'Fix it');
+
+        $this->actingAs($this->approver1);
+        $this->assertSame(0, $this->lists()->statusCount()['pending']['TOTAL']);
+
+        $this->actingAs($this->auditor);
+        $count = $this->lists()->statusCount();
+        $this->assertSame(1, $count['returned']['TOTAL']);
+        $this->assertSame(1, $count['returned']['COBS']);
+        $this->assertSame(0, $count['returned']['PESTS']);
+        $this->assertSame(0, $count['pending']['TOTAL']);        // the auditor signs nothing
+
+        $this->actingAs($this->approver1);
+        $this->assertSame(0, $this->lists()->statusCount()['returned']['TOTAL']);   // not their checklist
+    }
+
+    public function test_resubmitting_moves_the_count_from_returned_back_to_pending(): void
+    {
+        $this->submit(false);
+        $this->reject($this->approver1, 'Fix it');
+        $this->submit(false);                                    // the auditor resubmits
+
+        $this->actingAs($this->auditor);
+        $this->assertSame(0, $this->lists()->statusCount()['returned']['TOTAL']);
+
+        $this->actingAs($this->approver1);
+        $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);
+    }
+
+    public function test_the_count_moves_to_the_next_approver_after_a_signature(): void
+    {
+        $this->submit(false);
+        $this->sign($this->approver1);
+
+        $this->actingAs($this->approver1);
+        $this->assertSame(0, $this->lists()->statusCount()['pending']['TOTAL']);
+
+        $this->actingAs($this->approver2);
+        $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);
     }
 }

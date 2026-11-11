@@ -16,23 +16,31 @@ final class SubmissionWorkflow
     public function __construct(private readonly ApprovalFlowResolver $resolver) {}
 
     /** Called when a batch is submitted: creates the submission and snapshots every step as pending. */
-    public function finalize(int $batchNo, ?array $evaluatorSignature = null, bool $keepEvaluator = false, ?string $renameEvaluator = null): Submission
-    {
+    public function finalize(
+        int $batchNo,
+        ?array $evaluatorSignature = null,
+        bool $keepEvaluator = false,
+        ?string $renameEvaluator = null
+    ): Submission {
         return DB::transaction(function () use ($batchNo, $evaluatorSignature, $keepEvaluator, $renameEvaluator) {
             $first = Response::where('batch_no', $batchNo)->orderBy('id')->first();
             abort_if(! $first, 404, 'Batch not found.');
             abort_if(! $first->checklist, 422, 'This batch has no valid checklist.');
 
-            // Review has started once an approver has acted. A rejected checklist may be resubmitted,
-            // and an evaluator signed at submit doesn't count.
-            $existing = Submission::where('legacy_batch_no', $batchNo)->lockForUpdate()->first();
-            abort_if(
-                $existing && ! $existing->returned_at
-                && $existing->steps()->where('phase', 'post_submit')->where('status', '!=', 'pending')->exists(),
-                422,
-                'This checklist is already in review and cannot be resubmitted.'
-            );
-            $wasReturned = (bool) $existing?->returned_at;
+            // An already-submitted checklist may be edited at any time. The edit restarts the approval,
+            // so the approvals given so far are voided. They are read here, before the steps are rebuilt.
+            $existing     = Submission::where('legacy_batch_no', $batchNo)->lockForUpdate()->first();
+            $wasReturned  = (bool) $existing?->returned_at;
+            $wasSubmitted = $existing && $existing->submitted_at !== null;
+
+            $voided = $existing
+                ? SubmissionStepAssignee::whereHas(
+                    'step',
+                    fn ($q) => $q->where('submission_id', $existing->id)->where('phase', 'post_submit')
+                )->where('decision', 'approved')->with('step')->get()
+                    ->map(fn ($a) => $a->step->label . ': ' . ($a->signature_name ?? 'user ' . $a->user_id))
+                    ->all()
+                : [];
 
             // Editing: carry the previous evaluator signature over unless a new one was sent.
             if ($evaluatorSignature === null && $keepEvaluator && $existing) {
@@ -131,12 +139,14 @@ final class SubmissionWorkflow
 
             DB::table('responses')->where('batch_no', $batchNo)->update(['submission_id' => $submission->id]);
 
-            if ($wasReturned) {
+            // Every edit of an already-submitted checklist is logged, with the approvals it voided.
+            if ($wasSubmitted) {
                 SubmissionEvent::create([
                     'submission_id' => $submission->id,
-                    'type'          => 'resubmitted',
+                    'type'          => $wasReturned ? 'resubmitted' : 'edited',
                     'user_id'       => auth()->id(),
                     'actor_name'    => auth()->user()?->getFullNameAttribute(),
+                    'comment'       => $voided ? 'Approvals voided: ' . implode('; ', $voided) : null,
                 ]);
             }
 

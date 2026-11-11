@@ -1081,11 +1081,12 @@ class ResponseService
 
         abort_unless((int) $first->user_id === (int) auth()->id(), 403, 'Not your checklist.');
 
-        $submission = Submission::where('legacy_batch_no', $batchNo)->first();
+        $submission = Submission::where('legacy_batch_no', $batchNo)->with('steps')->first();
         abort_if(
-            $submission && ! $submission->isDraft() && ! $submission->returned_at,
+            $submission && ! $submission->isDraft() && ! $submission->returned_at
+            && $submission->steps->where('phase', 'post_submit')->every(fn ($s) => $s->status === 'done'),
             422,
-            'This checklist is in review. It can only be edited after it is rejected.'
+            'This checklist is already approved and can no longer be edited.'
         );
     }
 }

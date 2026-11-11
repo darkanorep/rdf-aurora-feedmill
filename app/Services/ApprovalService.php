@@ -90,10 +90,27 @@ class ApprovalService
 
     public function statusCount(): array
     {
-        $ids = $this->submissionIdsFor(auth()->id(), true);
+        $userId = auth()->id();
 
-        $sectionCounts = Submission::query()
-            ->whereIn('submissions.id', $ids)
+        // Waiting for THIS user to sign: their turn only, never a returned checklist.
+        $pending = $this->countBySection(
+            Submission::query()->whereIn('submissions.id', $this->submissionIdsFor($userId, true))
+        );
+
+        // THIS user's own checklists that an approver sent back for correction.
+        $returned = $this->countBySection(
+            Submission::query()
+                ->where('submissions.user_id', $userId)
+                ->whereNotNull('submissions.returned_at')
+        );
+
+        return ['pending' => $pending, 'returned' => $returned];
+    }
+
+    /** Counts a submissions query per section. Every known section is always present, even at 0. */
+    private function countBySection($query): array
+    {
+        $counts = $query
             ->join('checklists', 'checklists.id', '=', 'submissions.checklist_id')
             ->join('sections', 'sections.id', '=', 'checklists.section_id')
             ->selectRaw('sections.name as section_name, count(*) as total')
@@ -102,12 +119,12 @@ class ApprovalService
             ->mapWithKeys(fn ($total, $name) => [strtoupper($name ?? 'UNKNOWN') => (int) $total]);
 
         foreach (['COBS', 'PESTS', 'BIRDS'] as $section) {
-            if (! $sectionCounts->has($section)) {
-                $sectionCounts[$section] = 0;
+            if (! $counts->has($section)) {
+                $counts[$section] = 0;
             }
         }
 
-        return ['pending' => ['TOTAL' => $sectionCounts->sum(), ...$sectionCounts->toArray()]];
+        return ['TOTAL' => $counts->sum(), ...$counts->toArray()];
     }
 
     /**
