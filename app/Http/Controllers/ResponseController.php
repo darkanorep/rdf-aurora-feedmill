@@ -43,7 +43,7 @@ class ResponseController extends Controller
             'keep_image'     => ['sometimes', 'array'],
             'keep_image.*'   => ['array'],
             'keep_image.*.*' => ['integer'],
-            'remove_evaluator' => ['nullable', 'boolean'],
+            'remove_evaluator' => ['nullable', 'boolean']
         ]);
 
         $response = $this->responseService->storeResponse($data);

@@ -834,4 +834,17 @@ class ApprovalWorkflowTest extends TestCase
 
         $this->assertSame([1, 2], $this->current()->steps->pluck('step_order')->all());
     }
+
+    public function test_a_name_only_edit_keeps_the_signature_image(): void
+    {
+        $this->submit(true);
+        $this->reject($this->approver1);
+
+        $this->actingAs($this->auditor);
+        $this->workflow->finalize($this->batchNo, null, true, 'Juan D. Cruz');
+
+        $kept = $this->current()->steps->first()->assignees->first();
+        $this->assertSame('Juan D. Cruz', $kept->signature_name);                       // renamed
+        $this->assertSame('https://example.test/e.png', $kept->signature_image);        // image kept
+    }
 }

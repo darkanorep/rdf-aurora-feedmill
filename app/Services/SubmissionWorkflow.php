@@ -16,9 +16,9 @@ final class SubmissionWorkflow
     public function __construct(private readonly ApprovalFlowResolver $resolver) {}
 
     /** Called when a batch is submitted: creates the submission and snapshots every step as pending. */
-    public function finalize(int $batchNo, ?array $evaluatorSignature = null, bool $keepEvaluator = false): Submission
+    public function finalize(int $batchNo, ?array $evaluatorSignature = null, bool $keepEvaluator = false, ?string $renameEvaluator = null): Submission
     {
-        return DB::transaction(function () use ($batchNo, $evaluatorSignature, $keepEvaluator) {
+        return DB::transaction(function () use ($batchNo, $evaluatorSignature, $keepEvaluator, $renameEvaluator) {
             $first = Response::where('batch_no', $batchNo)->orderBy('id')->first();
             abort_if(! $first, 404, 'Batch not found.');
             abort_if(! $first->checklist, 422, 'This batch has no valid checklist.');
@@ -43,7 +43,7 @@ final class SubmissionWorkflow
 
                 if ($old && $old->signature_image) {
                     $evaluatorSignature = [
-                        'name'     => $old->signature_name,
+                        'name'     => $renameEvaluator ?? $old->signature_name,
                         'image'    => $old->signature_image,
                         'acted_at' => $old->acted_at,
                         'comment'  => trim(($old->comment ?? 'Signed at submission')

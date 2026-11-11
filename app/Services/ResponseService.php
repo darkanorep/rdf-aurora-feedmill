@@ -172,10 +172,25 @@ class ResponseService
         // Checked first, so nothing is uploaded for a request that will be refused.
         $this->assertCanReplace($existingBatchNo);
 
+        $name     = trim((string) ($data['evaluator_name'] ?? ''));
+        $file     = ($data['evaluator_signature'] ?? null) instanceof UploadedFile ? $data['evaluator_signature'] : null;
+        $removing = filter_var($data['remove_evaluator'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         // A signed evaluator only makes sense on a submitted checklist.
-        if (! empty($data['evaluator_name']) && empty($data['is_completed'])) {
+        if (($name !== '' || $file) && empty($data['is_completed'])) {
             throw ValidationException::withMessages([
                 'evaluator_name' => ['The evaluator can only sign when the checklist is submitted (is_completed=1).'],
+            ]);
+        }
+        if ($file && $name === '') {
+            throw ValidationException::withMessages([
+                'evaluator_name' => ['The evaluator name is required with a signature.'],
+            ]);
+        }
+        // A brand-new checklist has no saved signature to keep, so a name needs its signature too.
+        if ($name !== '' && ! $file && ! $existingBatchNo) {
+            throw ValidationException::withMessages([
+                'evaluator_signature' => ['The evaluator signature is required with a name.'],
             ]);
         }
 
@@ -187,8 +202,8 @@ class ResponseService
 
         $signature = null;
         try {
-            if (! empty($data['evaluator_name']) && ($data['evaluator_signature'] ?? null) instanceof UploadedFile) {
-                $signature = $this->uploadToImageKit($data['evaluator_signature']);   // ['url', 'file_id']
+            if ($file) {
+                $signature = $this->uploadToImageKit($file);   // ['url', 'file_id']
             }
         } catch (\Throwable $e) {
             $this->discardUploads($uploaded);
@@ -196,15 +211,22 @@ class ResponseService
         }
 
         // The evaluator is free text: a typed name and a signature image, no user account.
-        $evaluatorSignature = $signature
-            ? ['name' => trim($data['evaluator_name']), 'image' => $signature['url']]
-            : null;
+        //  - name + file  : a new signature
+        //  - name only    : renames the saved signature (editing only)
+        //  - nothing      : keeps the saved signature (editing only)
+        //  - remove flag  : drops the evaluator
+        $evaluatorSignature = $signature ? ['name' => $name, 'image' => $signature['url']] : null;
+        $keepEvaluator      = $existingBatchNo !== null && ! $removing && $evaluatorSignature === null;
+        $renameEvaluator    = ($name !== '' && ! $file) ? $name : null;
 
         $stale = [];   // ImageKit files of the photos this save replaces
 
         try {
             // 2. All DB work is atomic.
-            $batchNo = DB::transaction(function () use ($data, $responses, $uploaded, $evaluatorSignature, $existingBatchNo, &$stale) {
+            $batchNo = DB::transaction(function () use (
+                $data, $responses, $uploaded, $evaluatorSignature, $existingBatchNo,
+                $keepEvaluator, $renameEvaluator, &$stale
+            ) {
                 $oldIds  = [];
                 $keepMap = [];   // image id => the answer index it moves to
 
@@ -261,8 +283,8 @@ class ResponseService
                     app(SubmissionWorkflow::class)->finalize(
                         (int) $batchNo,
                         $evaluatorSignature,
-                        // Editing an existing batch keeps its evaluator signature unless the editor removes it.
-                        $existingBatchNo !== null && ! filter_var($data['remove_evaluator'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                        $keepEvaluator,
+                        $renameEvaluator
                     );
                 }
 
