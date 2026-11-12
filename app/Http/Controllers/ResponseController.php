@@ -157,6 +157,11 @@ class ResponseController extends Controller
         });
     }
 
+    public function returnedCount()
+    {
+        return $this->responseService->returnedCount();
+    }
+
     public function truncateResponse() {
         $this->responseService->truncateResponse();
 

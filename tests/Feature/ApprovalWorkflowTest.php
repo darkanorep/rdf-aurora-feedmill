@@ -872,46 +872,6 @@ class ApprovalWorkflowTest extends TestCase
         $this->assertSame('https://example.test/e.png', $kept->signature_image);        // image kept
     }
 
-    public function test_status_count_shows_pending_per_approver_and_returned_for_the_auditor(): void
-    {
-        $this->submit(false);
-
-        $this->actingAs($this->approver1);
-        $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);
-        $this->assertSame(0, $this->lists()->statusCount()['returned']['TOTAL']);
-
-        $this->actingAs($this->approver2);                       // not their turn yet
-        $this->assertSame(0, $this->lists()->statusCount()['pending']['TOTAL']);
-
-        $this->reject($this->approver1, 'Fix it');
-
-        $this->actingAs($this->approver1);
-        $this->assertSame(0, $this->lists()->statusCount()['pending']['TOTAL']);
-
-        $this->actingAs($this->auditor);
-        $count = $this->lists()->statusCount();
-        $this->assertSame(1, $count['returned']['TOTAL']);
-        $this->assertSame(1, $count['returned']['COBS']);
-        $this->assertSame(0, $count['returned']['PESTS']);
-        $this->assertSame(0, $count['pending']['TOTAL']);        // the auditor signs nothing
-
-        $this->actingAs($this->approver1);
-        $this->assertSame(0, $this->lists()->statusCount()['returned']['TOTAL']);   // not their checklist
-    }
-
-    public function test_resubmitting_moves_the_count_from_returned_back_to_pending(): void
-    {
-        $this->submit(false);
-        $this->reject($this->approver1, 'Fix it');
-        $this->submit(false);                                    // the auditor resubmits
-
-        $this->actingAs($this->auditor);
-        $this->assertSame(0, $this->lists()->statusCount()['returned']['TOTAL']);
-
-        $this->actingAs($this->approver1);
-        $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);
-    }
-
     public function test_the_count_moves_to_the_next_approver_after_a_signature(): void
     {
         $this->submit(false);
@@ -922,5 +882,67 @@ class ApprovalWorkflowTest extends TestCase
 
         $this->actingAs($this->approver2);
         $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);
+    }
+
+    public function test_the_pending_count_follows_whose_turn_it_is(): void
+    {
+        $this->submit(false);
+
+        $this->actingAs($this->approver1);
+        $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);
+
+        $this->actingAs($this->approver2);                       // not their turn yet
+        $this->assertSame(0, $this->lists()->statusCount()['pending']['TOTAL']);
+
+        $this->actingAs($this->auditor);                         // the auditor signs nothing
+        $this->assertSame(0, $this->lists()->statusCount()['pending']['TOTAL']);
+
+        $this->sign($this->approver1);
+
+        $this->actingAs($this->approver1);
+        $this->assertSame(0, $this->lists()->statusCount()['pending']['TOTAL']);
+        $this->actingAs($this->approver2);
+        $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);
+    }
+
+    public function test_the_returned_count_is_the_auditors_own_rejected_checklists(): void
+    {
+        $responses = app(ResponseService::class);
+
+        $this->submit(false);
+        $this->actingAs($this->auditor);
+        $this->assertSame(0, $responses->returnedCount()['returned']['TOTAL']);
+
+        $this->reject($this->approver1, 'Fix it');
+
+        $this->actingAs($this->auditor);
+        $count = $responses->returnedCount()['returned'];
+        $this->assertSame(1, $count['TOTAL']);
+        $this->assertSame(1, $count['COBS']);
+        $this->assertSame(0, $count['PESTS']);
+        $this->assertSame(0, $count['BIRDS']);
+
+        $this->actingAs($this->approver1);                       // not their checklist
+        $this->assertSame(0, $responses->returnedCount()['returned']['TOTAL']);
+    }
+
+    public function test_rejecting_and_resubmitting_move_the_counts(): void
+    {
+        $responses = app(ResponseService::class);
+
+        $this->submit(false);
+        $this->reject($this->approver1, 'Fix it');
+
+        $this->actingAs($this->approver1);
+        $this->assertSame(0, $this->lists()->statusCount()['pending']['TOTAL']);   // a rejected checklist leaves pending
+        $this->actingAs($this->auditor);
+        $this->assertSame(1, $responses->returnedCount()['returned']['TOTAL']);    // and shows up as returned
+
+        $this->submit(false);                                    // the auditor resubmits
+
+        $this->actingAs($this->auditor);
+        $this->assertSame(0, $responses->returnedCount()['returned']['TOTAL']);
+        $this->actingAs($this->approver1);
+        $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);   // back in the first approver's pending
     }
 }

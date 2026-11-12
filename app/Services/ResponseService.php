@@ -1089,4 +1089,26 @@ class ResponseService
             'This checklist is already approved and can no longer be edited.'
         );
     }
+
+    /** The auditor's own checklists that an approver sent back and that are not yet resubmitted. */
+    public function returnedCount(): array
+    {
+        $counts = Submission::query()
+            ->join('checklists', 'checklists.id', '=', 'submissions.checklist_id')
+            ->join('sections', 'sections.id', '=', 'checklists.section_id')
+            ->where('submissions.user_id', auth()->id())
+            ->whereNotNull('submissions.returned_at')
+            ->selectRaw('sections.name as section_name, count(*) as total')
+            ->groupBy('sections.name')
+            ->pluck('total', 'section_name')
+            ->mapWithKeys(fn ($total, $name) => [strtoupper($name ?? 'UNKNOWN') => (int) $total]);
+
+        foreach (['COBS', 'PESTS', 'BIRDS'] as $section) {
+            if (! $counts->has($section)) {
+                $counts[$section] = 0;
+            }
+        }
+
+        return ['returned' => ['TOTAL' => $counts->sum(), ...$counts->toArray()]];
+    }
 }

@@ -90,21 +90,10 @@ class ApprovalService
 
     public function statusCount(): array
     {
-        $userId = auth()->id();
-
         // Waiting for THIS user to sign: their turn only, never a returned checklist.
-        $pending = $this->countBySection(
-            Submission::query()->whereIn('submissions.id', $this->submissionIdsFor($userId, true))
-        );
-
-        // THIS user's own checklists that an approver sent back for correction.
-        $returned = $this->countBySection(
-            Submission::query()
-                ->where('submissions.user_id', $userId)
-                ->whereNotNull('submissions.returned_at')
-        );
-
-        return ['pending' => $pending, 'returned' => $returned];
+        return ['pending' => $this->countBySection(
+            Submission::query()->whereIn('submissions.id', $this->submissionIdsFor(auth()->id(), true))
+        )];
     }
 
     /** Counts a submissions query per section. Every known section is always present, even at 0. */
