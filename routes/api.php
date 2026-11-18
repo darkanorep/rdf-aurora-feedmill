@@ -4,6 +4,7 @@ use App\Http\Controllers\AcknowledgementSettingController;
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\AssessController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BirdsReportController;
 use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
@@ -90,8 +91,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
     //APPROVAL
     Route::get('approvals', [ApprovalController::class, 'index']);
     Route::post('approvals/approve', [ApprovalController::class, 'approve']);
-    Route::get('approvals/count-status', [ApprovalController::class, 'countStatus']);   // use your original path
+    Route::get('approvals/status-count', [ApprovalController::class, 'countStatus']);   // use your original path
 
+    //REPORTS
+    Route::get('reports/birds', [BirdsReportController::class, 'index']);
+    Route::get('reports/birds/export', [BirdsReportController::class, 'export']);
 
     Route::post('logout', [AuthController::class, 'logout']);
     Route::put('change-password', [AuthController::class, 'changePassword']);

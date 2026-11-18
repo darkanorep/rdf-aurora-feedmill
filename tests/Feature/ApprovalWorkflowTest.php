@@ -8,6 +8,7 @@ use App\Models\Submission;
 use App\Models\User;
 use App\Services\ApprovalFlowSync;
 use App\Services\ApprovalService;
+use App\Services\BirdsReportService;
 use App\Services\ResponseService;
 use App\Services\SubmissionWorkflow;
 use Database\Seeders\ApprovalStepTypeSeeder;
@@ -944,5 +945,38 @@ class ApprovalWorkflowTest extends TestCase
         $this->assertSame(0, $responses->returnedCount()['returned']['TOTAL']);
         $this->actingAs($this->approver1);
         $this->assertSame(1, $this->lists()->statusCount()['pending']['TOTAL']);   // back in the first approver's pending
+    }
+
+    public function test_the_birds_report_lists_only_finished_checklists_of_the_month(): void
+    {
+        $birds     = $this->newSection('birds');
+        $checklist = $this->makeChecklist($birds);
+        $this->makeFlow($birds, [[1, 'any', [$this->approver1->id]]]);
+
+        foreach ([301, 302] as $batch) {
+            $this->makeBatch($batch, $checklist);
+            DB::table('responses')->where('batch_no', $batch)->update(['response' => json_encode([
+                'lot' => 'Corn Dumping Area', 'infestation_level' => 'low', 'wastage' => 'yes', 'entry_points' => 'Door of lot 4',
+            ])]);
+        }
+
+        $this->actingAs($this->auditor);
+        $this->workflow->finalize(301);
+        $this->workflow->finalize(302);
+        $this->actingAs($this->approver1);
+        $this->workflow->act(301);                       // only 301 is finished
+
+        $report = app(BirdsReportService::class);
+        $rows   = $report->rows(now()->month, now()->year);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Corn Dumping Area', $rows[0]['lot']);
+        $this->assertSame('low', $rows[0]['infestation']);
+        $this->assertSame('yes', $rows[0]['wastage']);
+        $this->assertSame(now()->format('M') . now()->format('y'), $rows[0]['moyr']);
+        $this->assertSame('Unit 1', $rows[0]['unit']);
+
+        $next = now()->addMonthNoOverflow();
+        $this->assertCount(0, $report->rows($next->month, $next->year));          // other month
     }
 }
