@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\ApprovalFlowSync;
 use App\Services\ApprovalService;
 use App\Services\BirdsReportService;
+use App\Services\CobsReportService;
 use App\Services\PestsReportService;
 use App\Services\ResponseService;
 use App\Services\SubmissionWorkflow;
@@ -1059,5 +1060,76 @@ class ApprovalWorkflowTest extends TestCase
 
         $this->assertCount(2, $report->rows(now()->month, now()->year, 1));   // day 5 is in the first half
         $this->assertCount(0, $report->rows(now()->month, now()->year, 2));
+    }
+
+    public function test_the_cobs_report_has_one_row_per_checklist_item_in_checklist_order(): void
+    {
+        config(['reports.departments' => ['Unit 1' => 'Finished goods & Production']]);
+
+        $items = json_encode([
+            ['name' => 'CLEANLINESS', 'items' => [['name' => 'AREA', 'sub_items' => [['name' => 'Walang agiw'], ['name' => 'Malinis ang sahig']]]]],
+            ['name' => 'BIOSECURITY and SAFETY', 'items' => [['name' => 'PPE', 'sub_items' => [['name' => 'Hardhat with chinstrap']]]]],
+        ]);
+        $checklistId = DB::table('checklists')->insertGetId([
+            'section_id' => $this->sectionId, 'checklist_name' => 'Cobs', 'items' => $items,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $answer = fn (string $cat, string $item, string $sub, int $score, string $remarks = '') => json_encode(
+            ['checklist' => $cat, 'item' => $item, 'sub_item' => $sub, 'score' => $score, 'remarks' => $remarks]
+        );
+
+        $day = now()->startOfMonth()->addDays(4);
+
+        foreach ([501, 502] as $batch) {
+            // answers are stored in a different order than the checklist: the report must follow the checklist
+            foreach ([
+                         $answer('BIOSECURITY and SAFETY', 'PPE', 'Hardhat with chinstrap', 100),
+                         $answer('CLEANLINESS', 'AREA', 'Malinis ang sahig', 0),          // N/A
+                         $answer('CLEANLINESS', 'AREA', 'Walang agiw', 75, 'Needs a sweep'),
+                     ] as $json) {
+                DB::table('responses')->insert([
+                    'batch_no' => $batch, 'checklist_id' => $checklistId, 'unit_id' => $this->unitId,
+                    'user_id' => $this->auditor->id, 'response' => $json, 'is_completed' => true,
+                    'start_at' => $day, 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+        }
+
+        $this->actingAs($this->auditor);
+        $this->workflow->finalize(501);
+        $this->workflow->finalize(502);                      // never finishes
+        $this->actingAs($this->approver1);
+        $this->workflow->act(501);
+        $this->actingAs($this->approver2);
+        $this->workflow->act(501);
+
+        $rows = app(CobsReportService::class)->rows(now()->month, now()->year);
+
+        $this->assertCount(3, $rows);                        // 3 checklist items, only the finished batch
+
+        $this->assertSame('Cleanliness', $rows[0]['category']);
+        $this->assertSame(1, $rows[0]['number']);
+        $this->assertSame('Walang agiw', $rows[0]['parameter']);
+        $this->assertSame(75, $rows[0]['rating']);
+        $this->assertSame(2, $rows[0]['score']);             // 75 is 2 on the 3-point scale
+        $this->assertSame('Needs a sweep', $rows[0]['remarks']);
+        $this->assertSame('Finished goods & Production', $rows[0]['department']);
+        $this->assertSame('Unit 1', $rows[0]['unit']);
+        $this->assertSame($day->format('n/j/Y'), $rows[0]['date']);
+
+        $this->assertSame('Malinis ang sahig', $rows[1]['parameter']);
+        $this->assertNull($rows[1]['rating']);               // N/A stays in the sheet, blank
+        $this->assertNull($rows[1]['score']);
+
+        $this->assertSame('Biosecurity and Safety', $rows[2]['category']);   // "and" stays lower case
+        $this->assertSame(3, $rows[2]['number']);            // numbering continues across categories
+        $this->assertSame(3, $rows[2]['score']);
+        $this->assertSame(100, $rows[2]['rating']);
+
+        $this->assertCount(3, app(CobsReportService::class)->rows(now()->month, now()->year, $this->unitId));
+        $this->assertCount(0, app(CobsReportService::class)->rows(now()->month, now()->year, 9999));
+        $next = now()->addMonthNoOverflow();
+        $this->assertCount(0, app(CobsReportService::class)->rows($next->month, $next->year));
     }
 }

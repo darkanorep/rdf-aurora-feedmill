@@ -6,6 +6,7 @@ use App\Http\Controllers\AssessController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BirdsReportController;
 use App\Http\Controllers\ChecklistController;
+use App\Http\Controllers\CobsReportController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
@@ -99,6 +100,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('reports/birds/export', [BirdsReportController::class, 'export']);
     Route::get('reports/pests', [PestsReportController::class, 'index']);
     Route::get('reports/pests/export', [PestsReportController::class, 'export']);
+    Route::get('reports/cobs', [CobsReportController::class, 'index']);
+    Route::get('reports/cobs/export', [CobsReportController::class, 'export']);
 
 
     Route::post('logout', [AuthController::class, 'logout']);
