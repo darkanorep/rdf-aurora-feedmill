@@ -9,6 +9,7 @@ use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\InfestationLevelController;
 use App\Http\Controllers\InspectionAreaController;
+use App\Http\Controllers\PestsReportController;
 use App\Http\Controllers\ResponseController;
 use App\Http\Controllers\ResponseDuplicationController;
 use App\Http\Controllers\UnitController;
@@ -96,6 +97,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     //REPORTS
     Route::get('reports/birds', [BirdsReportController::class, 'index']);
     Route::get('reports/birds/export', [BirdsReportController::class, 'export']);
+    Route::get('reports/pests', [PestsReportController::class, 'index']);
+    Route::get('reports/pests/export', [PestsReportController::class, 'export']);
+
 
     Route::post('logout', [AuthController::class, 'logout']);
     Route::put('change-password', [AuthController::class, 'changePassword']);

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\ApprovalFlowSync;
 use App\Services\ApprovalService;
 use App\Services\BirdsReportService;
+use App\Services\PestsReportService;
 use App\Services\ResponseService;
 use App\Services\SubmissionWorkflow;
 use Database\Seeders\ApprovalStepTypeSeeder;
@@ -978,5 +979,85 @@ class ApprovalWorkflowTest extends TestCase
 
         $next = now()->addMonthNoOverflow();
         $this->assertCount(0, $report->rows($next->month, $next->year));          // other month
+    }
+
+    public function test_the_pests_report_builds_its_pest_columns_from_the_master_list(): void
+    {
+        $mosq = DB::table('pests')->insertGetId(['name' => 'Mosquito', 'created_at' => now(), 'updated_at' => now()]);
+        $sp   = DB::table('pests')->insertGetId(['name' => 'Stored Product Pest', 'created_at' => now(), 'updated_at' => now()]);
+
+        $pests     = $this->newSection('pests');
+        $checklist = $this->makeChecklist($pests);
+        $this->makeFlow($pests, [[1, 'any', [$this->approver1->id]]]);
+
+        $answers = [
+            // shape A: a list of entries
+            401 => ['inspected_by' => 'HDR', 'area' => 'Lot 1 (Soya)', 'inspection_services' => 'Inspection ( with treatment )',
+                'pests' => [
+                    ['pest_id' => $mosq, 'count' => 0, 'infestation_level' => 'Low'],
+                    ['pest_id' => $sp,   'count' => 3, 'infestation_level' => 'Moderate'],
+                ]],
+            // shape C: flat keys
+            402 => ['area' => 'Lot 2', 'mosquito' => 1, 'mosquito_il' => 'Low', 'storedproductpest' => '2', 'Stored Product Pest IL' => 'High'],
+            403 => ['area' => 'Lot 3'],                                   // never finished
+        ];
+
+        foreach ($answers as $batch => $answer) {
+            $this->makeBatch($batch, $checklist);
+            DB::table('responses')->where('batch_no', $batch)->update([
+                'start_at' => now()->startOfMonth()->addDays(4),
+                'response' => json_encode($answer),
+            ]);
+        }
+
+        $this->actingAs($this->auditor);
+        foreach ([401, 402, 403] as $batch) {
+            $this->workflow->finalize($batch);
+        }
+        $this->actingAs($this->approver1);
+        $this->workflow->act(401);
+        $this->workflow->act(402);                                        // 403 stays in review
+
+        $report = app(PestsReportService::class);
+
+        $this->assertSame(
+            [
+                'Date', 'Month', 'Year', 'Inspected by:', 'Inspection Areas',
+                'Mosquito', 'Stored Product Pest',
+                'Mosquito IL', 'Stored Product Pest IL',
+                'Cleanliness/Sanitation', 'Structural', 'Proper Ventilation',
+                'Inspection services',
+            ],
+            $report->headings()
+        );
+
+        $rows = $report->rows(now()->month, now()->year);
+        $this->assertCount(2, $rows);
+
+        $first = array_values($rows[0]);
+        $this->assertSame('HDR', $first[3]);
+        $this->assertSame('Lot 1 (Soya)', $first[4]);
+        $this->assertSame(0, $first[5]);                                  // Mosquitoes, a number
+        $this->assertSame(3, $first[6]);                                  // SP Pests
+        $this->assertSame('Low', $first[7]);                              // Mosq IL
+        $this->assertSame('Moderate', $first[8]);                         // SP Pest IL
+        $this->assertSame('Inspection ( with treatment )', $first[12]);
+
+        $second = array_values($rows[1]);
+        $this->assertSame(1, $second[5]);
+        $this->assertSame(2, $second[6]);                                 // "2" becomes 2
+        $this->assertSame('High', $second[8]);
+
+        // a pest added to the master list adds its two columns
+        DB::table('pests')->insert(['name' => 'Ants', 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertContains('Ants', $report->headings());
+        $this->assertContains('Ants IL', $report->headings());
+
+        // a pest removed from the master list drops out
+        DB::table('pests')->where('id', $sp)->update(['deleted_at' => now()]);
+        $this->assertNotContains('SP Pests', $report->headings());
+
+        $this->assertCount(2, $report->rows(now()->month, now()->year, 1));   // day 5 is in the first half
+        $this->assertCount(0, $report->rows(now()->month, now()->year, 2));
     }
 }
