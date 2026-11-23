@@ -1,0 +1,29 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('acknowledgement_settings', function (Blueprint $table) {
+            $table->dropForeign(['user_id']);   // created with foreignId()->references(), so it has a named FK
+            $table->dropColumn('user_id');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('acknowledgement_settings', function (Blueprint $table) {
+            $table->foreignId('user_id')->nullable()->after('name')->constrained('users');
+        });
+    }
+};

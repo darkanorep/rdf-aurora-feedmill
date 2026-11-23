@@ -18,9 +18,6 @@ class Response extends Model
 
     protected $casts = [
         'response' => 'json',
-        'evaluate' => 'json',
-        'approve' => 'json',
-        'assess' => 'json',
     ];
 
     public function checklist() {

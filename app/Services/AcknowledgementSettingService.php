@@ -13,14 +13,14 @@ class AcknowledgementSettingService
     }
 
     public function getAcknowledgementSetting() {
-        return $this->acknowledgementSetting->with(['users', 'hierarchies', 'sections'])->useFilters()->dynamicPaginate();
+        return $this->acknowledgementSetting->with(['hierarchies', 'sections'])->useFilters()->dynamicPaginate();
     }
     public function createAcknowledgementSetting(array $data) {
         return $this->acknowledgementSetting->create($data);
     }
 
     public function getAcknowledgementSettingById($id) {
-        return $this->acknowledgementSetting->with(['users', 'hierarchies', 'sections'])->find($id);
+        return $this->acknowledgementSetting->with(['hierarchies', 'sections'])->find($id);
     }
 
     public function updateAcknowledgementSetting(AcknowledgementSetting $setting, array $data) {

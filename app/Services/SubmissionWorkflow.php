@@ -1,0 +1,248 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Response;
+use App\Models\Submission;
+use App\Models\SubmissionStep;
+use App\Models\SubmissionStepAssignee;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use App\Models\ApprovalStepType;
+use App\Models\SubmissionEvent;
+
+final class SubmissionWorkflow
+{
+    public function __construct(private readonly ApprovalFlowResolver $resolver) {}
+
+    /** Called when a batch is submitted: creates the submission and snapshots every step as pending. */
+    public function finalize(
+        int $batchNo,
+        ?array $evaluatorSignature = null,
+        bool $keepEvaluator = false,
+        ?string $renameEvaluator = null
+    ): Submission {
+        return DB::transaction(function () use ($batchNo, $evaluatorSignature, $keepEvaluator, $renameEvaluator) {
+            $first = Response::where('batch_no', $batchNo)->orderBy('id')->first();
+            abort_if(! $first, 404, 'Batch not found.');
+            abort_if(! $first->checklist, 422, 'This batch has no valid checklist.');
+
+            // An already-submitted checklist may be edited at any time. The edit restarts the approval,
+            // so the approvals given so far are voided. They are read here, before the steps are rebuilt.
+            $existing     = Submission::where('legacy_batch_no', $batchNo)->lockForUpdate()->first();
+            $wasReturned  = (bool) $existing?->returned_at;
+            $wasSubmitted = $existing && $existing->submitted_at !== null;
+
+            $voided = $existing
+                ? SubmissionStepAssignee::whereHas(
+                    'step',
+                    fn ($q) => $q->where('submission_id', $existing->id)->where('phase', 'post_submit')
+                )->where('decision', 'approved')->with('step')->get()
+                    ->map(fn ($a) => $a->step->label . ': ' . ($a->signature_name ?? 'user ' . $a->user_id))
+                    ->all()
+                : [];
+
+            // Editing: carry the previous evaluator signature over unless a new one was sent.
+            if ($evaluatorSignature === null && $keepEvaluator && $existing) {
+                $old = SubmissionStepAssignee::whereHas(
+                    'step',
+                    fn ($q) => $q->where('submission_id', $existing->id)->where('phase', 'pre_submit')
+                )->orderByDesc('id')->first();
+
+                if ($old && $old->signature_image) {
+                    $evaluatorSignature = [
+                        'name'     => $renameEvaluator ?? $old->signature_name,
+                        'image'    => $old->signature_image,
+                        'acted_at' => $old->acted_at,
+                        'comment'  => trim(($old->comment ?? 'Signed at submission')
+                            . ' | carried over on resubmit by user ' . auth()->id()),
+                    ];
+                }
+            }
+
+            $flow = $this->resolver->resolve($first->checklist);
+            $applicable = $flow->steps->sortBy('step_order')->values();
+
+            // Never create a checklist that nobody can approve (or that is Done the moment it is submitted).
+            if ($applicable->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'approval' => ['No approvers are configured for this checklist. Contact the administrator.'],
+                ]);
+            }
+
+            if ($applicable->contains(fn ($s) => $s->assignees->isEmpty())) {
+                throw ValidationException::withMessages([
+                    'approval' => ['An approval step has no assigned user. Contact the administrator.'],
+                ]);
+            }
+
+            $submission = Submission::updateOrCreate(['legacy_batch_no' => $batchNo], [
+                'approval_flow_id' => $flow->id,
+                'checklist_id'     => $first->checklist_id,
+                'unit_id'          => $first->unit_id,
+                'user_id'          => $first->user_id,
+                'start_at'         => $first->start_at,
+                'submitted_at'     => now(),
+                'returned_at'      => null,
+                'good_points'      => $first->getRawOriginal('good_points'),
+                'remarks'          => $first->getRawOriginal('remarks'),
+                'notes'            => $first->getRawOriginal('notes'),
+                'temporal_audit'   => $first->getRawOriginal('temporal_audit'),
+            ]);
+
+            $submission->steps()->delete();   // assignees cascade
+
+            // The evaluator is not part of the flow: a typed name plus a signature image,
+            // recorded as an already-done step with no user account behind it.
+            if ($evaluatorSignature) {
+                $type = ApprovalStepType::where('key', 'evaluate')->firstOrFail();
+                $signedAt = $evaluatorSignature['acted_at'] ?? now();
+
+                $row = $submission->steps()->create([
+                    'step_type_id' => $type->id,
+                    'label'        => $type->label,
+                    'status_label' => $type->status_label,
+                    'step_order'   => 0,
+                    'phase'        => 'pre_submit',
+                    'mode'         => 'any',
+                    'status'       => 'done',
+                    'completed_at' => $signedAt,
+                ]);
+                $row->assignees()->create([
+                    'user_id'         => null,
+                    'decision'        => 'approved',
+                    'acted_at'        => $signedAt,
+                    'signature_name'  => $evaluatorSignature['name'],
+                    'signature_image' => $evaluatorSignature['image'],
+                    'comment'         => $evaluatorSignature['comment']
+                        ?? 'Signed at submission, captured by user ' . auth()->id(),
+                ]);
+            }
+
+            $approvalNo = 0;
+            foreach ($applicable as $step) {
+                $isApproval = $step->type->key === 'approve';
+
+                $row = $submission->steps()->create([
+                    'step_type_id' => $step->step_type_id,
+                    'label'        => $isApproval ? 'Approval ' . (++$approvalNo) : $step->type->label,
+                    'status_label' => $isApproval ? 'For Approval' : $step->type->status_label,
+                    'step_order'   => $step->step_order,
+                    'phase'        => 'post_submit',
+                    'mode'         => $step->mode,
+                    'status'       => 'pending',
+                ]);
+                $row->assignees()->createMany(
+                    $step->assignees->map(fn ($a) => ['user_id' => $a->user_id])->all()
+                );
+            }
+
+            DB::table('responses')->where('batch_no', $batchNo)->update(['submission_id' => $submission->id]);
+
+            // Every edit of an already-submitted checklist is logged, with the approvals it voided.
+            if ($wasSubmitted) {
+                SubmissionEvent::create([
+                    'submission_id' => $submission->id,
+                    'type'          => $wasReturned ? 'resubmitted' : 'edited',
+                    'user_id'       => auth()->id(),
+                    'actor_name'    => auth()->user()?->getFullNameAttribute(),
+                    'comment'       => $voided ? 'Approvals voided: ' . implode('; ', $voided) : null,
+                ]);
+            }
+
+            return $submission;
+        });
+    }
+
+    /** Checked before any file is uploaded, so a user with no turn can't push files to ImageKit. */
+    public function assertCanAct(int $batchNo): void
+    {
+        $submission = Submission::where('legacy_batch_no', $batchNo)->first();
+        abort_if(! $submission, 404, 'Batch not found.');
+        abort_if($submission->isDraft(), 422, 'This checklist has not been submitted yet.');
+
+        $canAct = SubmissionStepAssignee::actionable()
+            ->where('submission_step_assignees.user_id', auth()->id())
+            ->whereHas('step', fn ($q) => $q->where('submission_id', $submission->id))
+            ->exists();
+
+        abort_unless($canAct, 403, 'You have no pending action on this checklist.');
+    }
+
+    /** The caller signs THEIR OWN open step. There is no way to act for someone else. */
+    public function act(int $batchNo, array $signature = [], ?string $comment = null): Submission
+    {
+        return DB::transaction(function () use ($batchNo, $signature, $comment) {
+            $submission = Submission::where('legacy_batch_no', $batchNo)->lockForUpdate()->first();
+            abort_if(! $submission, 404, 'Batch not found.');
+            abort_if($submission->isDraft(), 422, 'This checklist has not been submitted yet.');
+
+            $row = SubmissionStepAssignee::actionable()
+                ->where('submission_step_assignees.user_id', auth()->id())
+                ->whereHas('step', fn ($q) => $q->where('submission_id', $submission->id))
+                ->lockForUpdate()
+                ->first();
+
+            abort_unless($row, 403, 'You have no pending action on this checklist.');
+
+            $step = SubmissionStep::lockForUpdate()->find($row->submission_step_id);
+            abort_unless($step, 500, 'Step not found for this assignee.');
+
+            $row->update([
+                'decision'        => 'approved',
+                'acted_at'        => now(),
+                'signature_name'  => $signature['name'] ?? auth()->user()?->getFullNameAttribute(),
+                'signature_image' => $signature['image'] ?? null,
+                'comment'         => $comment,
+            ]);
+
+            $step->refreshStatus();
+
+            return $submission->load('steps.type', 'steps.assignees');
+        });
+    }
+
+    /** The caller rejects THEIR OWN open step. The checklist goes back to the auditor. */
+    public function reject(int $batchNo, string $reason): Submission
+    {
+        return DB::transaction(function () use ($batchNo, $reason) {
+            $submission = Submission::where('legacy_batch_no', $batchNo)->lockForUpdate()->first();
+            abort_if(! $submission, 404, 'Batch not found.');
+            abort_if($submission->isDraft(), 422, 'This checklist has not been submitted yet.');
+
+            $row = SubmissionStepAssignee::actionable()
+                ->where('submission_step_assignees.user_id', auth()->id())
+                ->whereHas('step', fn ($q) => $q->where('submission_id', $submission->id))
+                ->lockForUpdate()
+                ->first();
+
+            abort_unless($row, 403, 'You have no pending action on this checklist.');
+
+            $step = SubmissionStep::lockForUpdate()->find($row->submission_step_id);
+            abort_unless($step, 500, 'Step not found for this assignee.');
+
+            $name = auth()->user()?->getFullNameAttribute();
+
+            $row->update([
+                'decision'       => 'rejected',
+                'acted_at'       => now(),
+                'signature_name' => $name,
+                'comment'        => $reason,
+            ]);
+            $step->refreshStatus();                       // becomes 'rejected'
+            $submission->update(['returned_at' => now()]);
+
+            SubmissionEvent::create([
+                'submission_id' => $submission->id,
+                'type'          => 'rejected',
+                'user_id'       => auth()->id(),
+                'actor_name'    => $name,
+                'step_order'    => $step->step_order,
+                'step_label'    => $step->label,
+                'comment'       => $reason,
+            ]);
+
+            return $submission->load('steps.type', 'steps.assignees');
+        });
+    }
+}
